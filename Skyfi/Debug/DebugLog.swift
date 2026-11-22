@@ -34,6 +34,8 @@ final class DebugLog {
     @ObservationIgnored private let fileURL: URL
     @ObservationIgnored private var handle: FileHandle?
     @ObservationIgnored private let maxEntries = 2000
+    /// File writes happen off the main thread, in order.
+    @ObservationIgnored private let writer = DispatchQueue(label: "com.shawnzhu.skyfi.log", qos: .utility)
 
     private init() {
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -51,15 +53,15 @@ final class DebugLog {
         let entry = Entry(id: nextID, time: time, area: area, text: text)
         entries.append(entry)
         if entries.count > maxEntries { entries.removeFirst(entries.count - maxEntries) }
-        if let data = (Self.format(entry) + "\n").data(using: .utf8) {
-            try? handle?.write(contentsOf: data)
+        if let data = (Self.format(entry) + "\n").data(using: .utf8), let handle {
+            writer.async { try? handle.write(contentsOf: data) }
         }
     }
 
     func clear() {
         entries.removeAll()
         previous = ""
-        try? handle?.truncate(atOffset: 0)
+        if let handle { writer.async { try? handle.truncate(atOffset: 0) } }
     }
 
     /// The whole report: device and app details, this launch, then the previous launch.
