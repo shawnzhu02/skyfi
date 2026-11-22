@@ -177,7 +177,7 @@ final class PlaneSizeTests: XCTestCase {
         XCTAssertEqual(PlaneAnnotationView.scale(forType: "E75L"), 1)
         XCTAssertEqual(PlaneAnnotationView.scale(forType: "C172"), 0.72)
         XCTAssertEqual(PlaneAnnotationView.scale(forType: "C17"), 1.3)
-        XCTAssertEqual(PlaneAnnotationView.scale(forType: "C560"), 0.72, "a Citation, not a C-5")
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "C560"), 1, "a Citation jet, not a C-5")
         XCTAssertEqual(PlaneAnnotationView.scale(forType: nil), 1)
     }
 }
