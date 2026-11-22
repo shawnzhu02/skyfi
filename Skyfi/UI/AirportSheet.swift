@@ -118,20 +118,7 @@ struct AirportSheet: View {
                         Section("On approach") {
                             ForEach(approaching) { plane in
                                 Button { onPickPlane(plane) } label: {
-                                    HStack {
-                                        Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
-                                        if let type = plane.type {
-                                            Text(type).font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                                        }
-                                        Spacer()
-                                        if let runway = EventDetector.landingRunway(plane, at: airport) {
-                                            Text(runway).font(Theme.mono(11, .bold)).foregroundStyle(Theme.cyan)
-                                        }
-                                        if let minutes = EventDetector.minutesToLanding(plane, at: airport) {
-                                            Text("~\(minutes) min").font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                                        }
-                                        Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.amber)
-                                    }
+                                    ApproachRow(plane: plane, airport: airport)
                                 }
                             }
                         }
@@ -340,6 +327,42 @@ struct ATISSection: View {
         case .combined: return "INFO\(code)"
         case .arrival: return "ARR\(code)"
         case .departure: return "DEP\(code)"
+        }
+    }
+}
+
+/// One plane on approach: callsign, type, where it's coming from, runway, ETA and altitude.
+struct ApproachRow: View {
+    let plane: Plane
+    let airport: Airport
+    @State private var route: String?
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
+                    if let type = plane.type {
+                        Text(type).font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    }
+                }
+                if let route {
+                    Text(route).font(Theme.mono(10)).foregroundStyle(Theme.amber.opacity(0.8))
+                }
+            }
+            Spacer()
+            if let runway = EventDetector.landingRunway(plane, at: airport) {
+                Text(runway).font(Theme.mono(11, .bold)).foregroundStyle(Theme.cyan)
+            }
+            if let minutes = EventDetector.minutesToLanding(plane, at: airport) {
+                Text("~\(minutes) min").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+            }
+            Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.amber)
+        }
+        .task(id: plane.id) {
+            if let callsign = plane.callsign {
+                route = await RouteLookup.shared.route(callsign: callsign, lat: plane.lat, lon: plane.lon)
+            }
         }
     }
 }
