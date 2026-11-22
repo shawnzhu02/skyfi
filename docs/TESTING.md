@@ -38,7 +38,10 @@ If step 3 or 6 fails, note what the debug log says under `[web]`.
 - Activity (list icon) > search "DAL" finds Delta flights on the map. Search a flight far away (e.g. a callsign from FlightAware) > Search worldwide > pick it: the map flies there and its card opens.
 - Activity shows "Notable nearby": military, A380s, 747s, emergencies.
 - Plane card: "12 nm SW of BOS" line; tap BOS or LAX on the route bar to open that airport.
-- About > Map > Color planes by altitude (a legend shows top right). Keep the screen on while connected.
+- About > Map > Color planes by altitude (a legend shows top right), Radar data blocks ("120 25" under callsigns), Hide planes on the ground, Keep the screen on while connected.
+- Select a plane on approach and wait: a banner and a tap when it lands ("DAL234 landed BOS 22L").
+- Stay connected for a while: when the ATIS letter changes, a banner says "BOS information L now current".
+- Airport card on approach list: planes numbered #1, #2… in rough landing order.
 
 ## Other
 
@@ -49,5 +52,6 @@ If step 3 or 6 fails, note what the debug log says under `[web]`.
 - Airport card > share icon: sends a skyfi:// link.
 - An airport with no feed (e.g. a small field): "Nearby towers with a feed" lists the closest ones.
 - Second launch: "Resume BOS + <music>" chip.
-- Siri: "Connect to BOS in Skyfi" (or Shortcuts app > Skyfi).
+- Siri: "Connect to BOS in Skyfi", "Weather at BOS in Skyfi" (reads the METAR), "Pause Skyfi" (or Shortcuts app > Skyfi).
+- Mixer > What am I hearing?: the ATC glossary.
 - Safari: `skyfi://connect/JFK` opens Skyfi connected to JFK.
