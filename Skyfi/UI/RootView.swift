@@ -94,7 +94,7 @@ struct RootView: View {
                         .transition(.opacity)
                 }
                 if let plane = selectedPlane {
-                    PlaneCard(plane: plane, following: $following) { selectedPlaneID = nil }
+                    PlaneCard(plane: plane, following: $following, onAirport: { selectedAirport = $0 }) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 TranscriptStrip(onPick: pick(planeID:), onOpen: { showTranscript = true })
@@ -320,6 +320,8 @@ struct RootView: View {
 struct PlaneCard: View {
     let plane: Plane
     @Binding var following: Bool
+    /// Tapped an airport on the route bar.
+    var onAirport: (Airport) -> Void = { _ in }
     var onClose: () -> Void
     @State private var route: String?
     @Environment(TrafficStore.self) private var traffic
@@ -345,7 +347,7 @@ struct PlaneCard: View {
             }
             if let route {
                 if !plane.onGround, let progress = FlightProgress.from(route: route, plane: plane) {
-                    ProgressRow(progress: progress)
+                    ProgressRow(progress: progress, onAirport: onAirport)
                 } else {
                     Text(route).font(Theme.mono(13)).foregroundStyle(Theme.amber)
                 }
@@ -584,11 +586,12 @@ struct ResumeChip: View {
 /// BOS ━━━━✈︎───── LAX, with the distance left.
 struct ProgressRow: View {
     let progress: FlightProgress
+    var onAirport: (Airport) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text(progress.from.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.amber)
+                code(progress.from)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Theme.muted.opacity(0.3)).frame(height: 3)
@@ -600,14 +603,22 @@ struct ProgressRow: View {
                     .frame(maxHeight: .infinity)
                 }
                 .frame(height: 14)
-                Text(progress.to.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.amber)
+                code(progress.to)
             }
             Text("\(Int(progress.remainingNM.rounded()).formatted()) nm to \(progress.to.city ?? progress.to.code)")
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(progress.from.code) to \(progress.to.code), \(Int(progress.fraction * 100)) percent flown, \(Int(progress.remainingNM)) nautical miles to go")
     }
+    private func code(_ airport: Airport) -> some View {
+        Button { onAirport(airport) } label: {
+            Text(airport.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.amber).underline()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(airport.name)")
+    }
+
 }
 
 extension ActivityList {
