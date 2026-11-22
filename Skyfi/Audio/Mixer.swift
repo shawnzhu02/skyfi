@@ -49,6 +49,8 @@ final class Mixer {
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var retryTask: [ObjectIdentifier: Task<Void, Never>] = [:]
     @ObservationIgnored private var watchdogs: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var retryCount: [ObjectIdentifier: Int] = [:]
+    @ObservationIgnored private var backgroundTasks: [ObjectIdentifier: UIBackgroundTaskIdentifier] = [:]
 
     private init() {
         musicPlayer.automaticallyWaitsToMinimizeStalling = true
@@ -104,11 +106,56 @@ final class Mixer {
     private func startMusic(_ url: URL) {
         activateSession()
         musicURL = url
-        musicPlayer.replaceCurrentItem(with: AVPlayerItem(url: url))
+        musicPlayer.replaceCurrentItem(with: makeMusicItem(url))
         musicStatus = .loading
         musicPlayer.play()
         watchdog(isMusic: true)
         updateNowPlaying()
+    }
+
+    /// YouTube live HLS always carries video; cap it at the smallest variant so hours of
+    /// lofi don't stream 1-3 Mbps of picture nobody sees.
+    private func makeMusicItem(_ url: URL) -> AVPlayerItem {
+        let item = AVPlayerItem(url: url)
+        if music?.youtubeID != nil, music?.isLive == true {
+            item.preferredPeakBitRate = 350_000
+            item.preferredMaximumResolution = CGSize(width: 256, height: 144)
+        }
+        return item
+    }
+
+    /// Reconnects music after a pause or drop. YouTube URLs expire after a few hours, so a
+    /// YouTube live stream is resolved again; a normal video picks up where it stopped.
+    private func reconnectMusic() async {
+        guard let music else { return }
+        let request = musicRequest
+        if let id = music.youtubeID, music.isLive {
+            guard let resolved = try? await YouTubeSource.resolve(videoID: id) else {
+                guard request == musicRequest else { return }
+                musicStatus = .failed("Stream stopped. Tap play to try again.")
+                updateNowPlaying()
+                return
+            }
+            guard request == musicRequest else { return }
+            musicURL = resolved.url
+            musicPlayer.replaceCurrentItem(with: makeMusicItem(resolved.url))
+        } else if let id = music.youtubeID {
+            if musicPlayer.currentItem?.status == .failed {
+                let resumeAt = musicPlayer.currentTime()
+                // The old URL may have expired too.
+                if let resolved = try? await YouTubeSource.resolve(videoID: id) {
+                    guard request == musicRequest else { return }
+                    musicURL = resolved.url
+                }
+                guard request == musicRequest, let url = musicURL else { return }
+                musicPlayer.replaceCurrentItem(with: makeMusicItem(url))
+                await musicPlayer.seek(to: resumeAt)
+            }
+        } else if let url = musicURL {
+            musicPlayer.replaceCurrentItem(with: makeMusicItem(url))
+        }
+        guard request == musicRequest else { return }
+        musicPlayer.play()
     }
 
     func stopMusic() {
@@ -156,13 +203,14 @@ final class Mixer {
 
     func resume() {
         activateSession()
-        // Live streams go stale while paused, so reconnect them instead of resuming.
-        if let music, music.isLive, let musicURL {
-            musicPlayer.replaceCurrentItem(with: AVPlayerItem(url: musicURL))
-        }
-        if music != nil {
-            musicPlayer.play()
+        if let music {
             musicStatus = .loading
+            if music.isLive || musicPlayer.currentItem?.status == .failed {
+                // Live streams go stale while paused, so reconnect them instead of resuming.
+                Task { await reconnectMusic() }
+            } else {
+                musicPlayer.play()
+            }
         }
         if let feed {
             atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
@@ -223,6 +271,14 @@ final class Mixer {
             let failed = player.currentItem?.status == .failed
             Task { @MainActor in self?.syncStatus(isMusic: false, status, failed: failed) }
         })
+        // An item that fails while loading never stalls, so it needs its own retry trigger.
+        for player in [musicPlayer, atcPlayer] {
+            statusObservers.append(player.observe(\.currentItem?.status, options: [.new]) { [weak self] player, _ in
+                guard player.currentItem?.status == .failed else { return }
+                let item = player.currentItem
+                Task { @MainActor in self?.handleItemProblem(item, ended: false) }
+            })
+        }
     }
 
     private func syncStatus(isMusic: Bool, _ status: AVPlayer.TimeControlStatus, failed: Bool) {
@@ -230,17 +286,26 @@ final class Mixer {
         guard current != .idle else { return }
         var next = current
         switch status {
-        case .playing: next = .playing
+        case .playing:
+            next = .playing
+            retryCount[ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)] = 0
         case .waitingToPlayAtSpecifiedRate: next = .loading
         case .paused:
             if failed {
                 next = .failed(isMusic ? "Stream stopped." : "Feed offline right now.")
-            } else if current != .loading {
+            } else if current != .loading, !isFailed(current) {
                 next = .paused
             }
         @unknown default: break
         }
+        guard next != current else { return }
         if isMusic { musicStatus = next } else { atcStatus = next }
+        updateNowPlaying()
+    }
+
+    private func isFailed(_ status: Status) -> Bool {
+        if case .failed = status { return true }
+        return false
     }
 
     private func handleInterruption(type raw: UInt?, options: UInt?) {
@@ -249,6 +314,7 @@ final class Mixer {
         case .began:
             if music != nil { musicStatus = .paused }
             if feed != nil { atcStatus = .paused }
+            updateNowPlaying()
         case .ended:
             if let options, AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
                 resume()
@@ -257,7 +323,8 @@ final class Mixer {
         }
     }
 
-    /// A live stream dropped or stalled: reconnect after a short wait.
+    /// A live stream dropped, stalled or failed to load: reconnect with backoff (3, 6, 12, 24, 30 s…).
+    /// A background task keeps the app alive through the wait when the screen is locked.
     private func handleItemProblem(_ item: AVPlayerItem?, ended: Bool) {
         guard let item else { return }
         let isMusic = item === musicPlayer.currentItem
@@ -269,18 +336,39 @@ final class Mixer {
             return
         }
         let key = ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)
-        retryTask[key]?.cancel()
+        guard retryTask[key] == nil else { return }
+        let attempt = retryCount[key, default: 0]
+        retryCount[key] = attempt + 1
+        let delay = min(3 * pow(2, Double(attempt)), 30)
+        if backgroundTasks[key] == nil {
+            backgroundTasks[key] = UIApplication.shared.beginBackgroundTask { [weak self] in
+                MainActor.assumeIsolated { self?.endBackgroundTask(key) }
+            }
+        }
         retryTask[key] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
-            guard let self, !Task.isCancelled else { return }
-            if isMusic, let url = self.musicURL, self.musicStatus != .paused {
-                self.musicPlayer.replaceCurrentItem(with: AVPlayerItem(url: url))
-                self.musicPlayer.play()
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self else { return }
+            defer {
+                self.retryTask[key] = nil
+                self.endBackgroundTask(key)
+            }
+            guard !Task.isCancelled else { return }
+            if isMusic, self.music != nil, self.musicStatus != .paused {
+                if self.musicPlayer.currentItem?.status == .failed || self.music?.isLive == true {
+                    await self.reconnectMusic()
+                } else {
+                    self.musicPlayer.play()
+                }
             } else if isATC, let feed = self.feed, self.atcStatus != .paused {
                 self.atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
                 self.atcPlayer.play()
             }
         }
+    }
+
+    private func endBackgroundTask(_ key: ObjectIdentifier) {
+        guard let id = backgroundTasks.removeValue(forKey: key) else { return }
+        UIApplication.shared.endBackgroundTask(id)
     }
 
     // MARK: Lock screen

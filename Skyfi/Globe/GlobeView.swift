@@ -79,6 +79,7 @@ struct GlobeView: UIViewRepresentable {
         private var planeAnnotations: [String: PlaneAnnotation] = [:]
         private var airportAnnotations: [String: AirportAnnotation] = [:]
         private var ticker: Timer?
+        private var appObservers: [NSObjectProtocol] = []
         private var lastAirportRegion: MKCoordinateRegion?
 
         static let maxPlanes = 1500
@@ -90,9 +91,24 @@ struct GlobeView: UIViewRepresentable {
         }
 
         func startTicker() {
+            guard ticker == nil else { return }
             ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.tick() }
             }
+            guard appObservers.isEmpty else { return }
+            // No gliding planes while the screen is off or the app is in the background: audio keeps going, the map doesn't.
+            let center = NotificationCenter.default
+            appObservers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pauseTicker() }
+            })
+            appObservers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.startTicker() }
+            })
+        }
+
+        private func pauseTicker() {
+            ticker?.invalidate()
+            ticker = nil
         }
 
         func stopTicker() {

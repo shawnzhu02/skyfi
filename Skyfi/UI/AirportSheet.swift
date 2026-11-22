@@ -30,7 +30,8 @@ struct AirportSheet: View {
                     if let feed {
                         let tuned = mixer.feed == feed
                         Button {
-                            tuned ? mixer.stopATC() : mixer.tune(feed)
+                            // An offline feed retries; a playing one stops.
+                            if tuned, !isFailed(mixer.atcStatus) { mixer.stopATC() } else { mixer.tune(feed) }
                         } label: {
                             HStack {
                                 Image(systemName: tuned ? "headphones.circle.fill" : "headphones")
@@ -83,12 +84,17 @@ struct AirportSheet: View {
         }
     }
 
+    private func isFailed(_ status: Mixer.Status) -> Bool {
+        if case .failed = status { return true }
+        return false
+    }
+
     private func statusText(_ status: Mixer.Status) -> String {
         switch status {
         case .loading: return "Connecting…"
         case .playing: return "Live"
         case .paused: return "Paused"
-        case .failed: return "Offline"
+        case .failed: return "Offline · tap to retry"
         case .idle: return "Tune"
         }
     }
