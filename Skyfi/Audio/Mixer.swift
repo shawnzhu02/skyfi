@@ -60,6 +60,31 @@ final class Mixer {
     }
     var hasSomething: Bool { music != nil || feed != nil }
 
+    /// When the sleep timer pauses everything (nil = off).
+    private(set) var sleepAt: Date?
+    @ObservationIgnored private var sleepTask: Task<Void, Never>?
+
+    func setSleepTimer(minutes: Int?) {
+        sleepTask?.cancel()
+        sleepTask = nil
+        guard let minutes, minutes > 0 else {
+            if sleepAt != nil { dlog("app", "sleep timer off") }
+            sleepAt = nil
+            return
+        }
+        let at = Date().addingTimeInterval(Double(minutes) * 60)
+        sleepAt = at
+        dlog("app", "sleep timer \(minutes) min")
+        sleepTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(at.timeIntervalSinceNow))
+            guard let self, !Task.isCancelled else { return }
+            dlog("app", "sleep timer fired")
+            self.sleepAt = nil
+            self.sleepTask = nil
+            self.pause()
+        }
+    }
+
     @ObservationIgnored private let musicPlayer = AVPlayer()
     @ObservationIgnored private let atcPlayer = AVPlayer()
     @ObservationIgnored private var musicURL: URL?
@@ -247,6 +272,27 @@ final class Mixer {
         self.airport = airport.icao
         feed = candidates[0]
         browser.open(candidates[0])
+        updateNowPlaying()
+    }
+
+    /// For an airport Skyfi has no feed list for: connects its planes and opens LiveATC's page
+    /// for it, where you pick a feed (the pick becomes the tower feed).
+    func connectViaLiveATC(_ airport: Airport) {
+        if !Catalog.feeds(at: airport.icao).isEmpty {
+            connect(airport)
+            return
+        }
+        dlog("atc", "connect \(airport.icao) via LiveATC's airport page")
+        Places.shared.noteConnected(airport.icao)
+        cancelRetry(isMusic: false)
+        watchdogs["atc"]?.cancel()
+        chain = nil
+        userPaused = false
+        setATCItem(nil)
+        atcStatus = .idle
+        self.airport = airport.icao
+        feed = nil
+        LiveATCBrowser.shared.openAirport(airport.icao)
         updateNowPlaying()
     }
 

@@ -204,8 +204,8 @@ final class AirportAnnotationView: MKAnnotationView {
 
     /// Airports you can connect to get a larger cyan-ringed dot and are always shown;
     /// the connected one is filled. Others are small grey dots for orientation.
-    func configure(airport: Airport, tuned: Bool, hasFeed: Bool) {
-        label.text = airport.code
+    func configure(airport: Airport, tuned: Bool, hasFeed: Bool, favorite: Bool = false) {
+        label.text = favorite ? "★\(airport.code)" : airport.code
         let size: CGFloat = hasFeed ? 12 : 7
         dot.frame = CGRect(x: (bounds.width - size) / 2, y: 0, width: size, height: size)
         dot.layer.cornerRadius = size / 2
@@ -214,8 +214,8 @@ final class AirportAnnotationView: MKAnnotationView {
         dot.layer.borderColor = (hasFeed ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.6)).cgColor
         label.frame = CGRect(x: 0, y: size + 1, width: bounds.width, height: 13)
         label.font = .monospacedSystemFont(ofSize: hasFeed ? 11 : 9, weight: .bold)
-        label.textColor = tuned || hasFeed ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.6)
-        displayPriority = hasFeed || tuned ? .required : .defaultLow
+        label.textColor = favorite ? Theme.uiAmber : (tuned || hasFeed ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.6))
+        displayPriority = hasFeed || tuned || favorite ? .required : .defaultLow
         zPriority = hasFeed ? .defaultSelected : .min
     }
 }

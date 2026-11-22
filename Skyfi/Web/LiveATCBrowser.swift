@@ -89,6 +89,16 @@ final class LiveATCBrowser {
         startPolling()
     }
 
+    /// LiveATC's page for an airport, to pick one of its feeds there.
+    func openAirport(_ icao: String) {
+        feed = nil
+        isOpen = true
+        expand()
+        media = .none
+        load(Self.airportURL(icao: icao))
+        startPolling()
+    }
+
     /// Shows the panel. A Skyfi pause stays in place: Skyfi's play button lifts it.
     func expand() {
         expanded = true
@@ -100,7 +110,7 @@ final class LiveATCBrowser {
 
     /// LiveATC's page for the airport, with every feed it has there.
     func showAllFeeds() {
-        guard let icao = feed?.airport else { return }
+        guard let icao = feed?.airport ?? Mixer.shared.airport else { return }
         load(Self.airportURL(icao: icao))
     }
 
@@ -282,8 +292,13 @@ private final class BrowserHelper: NSObject, WKNavigationDelegate, WKUIDelegate,
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard navigationAction.targetFrame?.isMainFrame != false, let url = navigationAction.request.url else { return .allow }
         if url.absoluteString == "about:blank" || LiveATCBrowser.isLiveATC(url) { return .allow }
-        dlog("web", "outside link sent to Safari: \(url.host ?? url.scheme ?? "?")")
-        if url.scheme == "https" || url.scheme == "http" { await UIApplication.shared.open(url) }
+        // Only a link you tapped leaves for Safari; a script redirect off LiveATC is just stopped.
+        if navigationAction.navigationType == .linkActivated, url.scheme == "https" || url.scheme == "http" {
+            dlog("web", "tapped outside link sent to Safari: \(url.host ?? "?")")
+            await UIApplication.shared.open(url)
+        } else {
+            dlog("web", "blocked navigation off LiveATC: \(url.host ?? url.scheme ?? "?")")
+        }
         return .cancel
     }
 
@@ -310,8 +325,15 @@ private final class BrowserHelper: NSObject, WKNavigationDelegate, WKUIDelegate,
     /// LiveATC opens players in pop-up windows: load them in the same view instead.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        // The navigation policy above still vets the URL.
-        if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
+        // WebKit only lets pages open windows from a tap. LiveATC pop-ups load here (the navigation
+        // policy above still vets them); anything else goes to Safari.
+        guard navigationAction.targetFrame == nil, let url = navigationAction.request.url else { return nil }
+        if LiveATCBrowser.isLiveATC(url) {
+            webView.load(navigationAction.request)
+        } else if url.scheme == "https" || url.scheme == "http" {
+            dlog("web", "tapped outside pop-up sent to Safari: \(url.host ?? "?")")
+            UIApplication.shared.open(url)
+        }
         return nil
     }
 }

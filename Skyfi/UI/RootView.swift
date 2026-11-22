@@ -21,7 +21,7 @@ struct RootView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             GlobeView(planes: traffic.planes, tunedAirport: mixer.airport,
-                      talking: talk.talking, look: look,
+                      talking: talk.talking, favorites: Places.shared.favorites, look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 })
                 .ignoresSafeArea()
@@ -164,6 +164,7 @@ struct PlaneCard: View {
     let plane: Plane
     var onClose: () -> Void
     @State private var route: String?
+    @Environment(TrafficStore.self) private var traffic
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -188,6 +189,10 @@ struct PlaneCard: View {
                 stat("SPD", Format.speed(plane.groundSpeed))
                 stat("V/S", Format.verticalRate(plane.verticalRate))
                 if let reg = plane.registration { stat("REG", reg) }
+                if let airport = traffic.connected, let facility = LikelyFacility.guess(plane, airport: airport) {
+                    stat("ON", facility.rawValue)
+                        .accessibilityLabel("Likely talking to \(airport.code) \(facility.label)")
+                }
             }
         }
         .padding(14)

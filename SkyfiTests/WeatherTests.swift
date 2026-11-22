@@ -125,3 +125,30 @@ final class PlacesTests: XCTestCase {
         XCTAssertTrue(Catalog.search("zzzzqq").isEmpty)
     }
 }
+
+final class FacilityTests: XCTestCase {
+    private var boston: Airport { AirportIndex.shared.airport(icao: "KBOS")! }
+
+    private func plane(lat: Double, lon: Double, alt: Int?, ground: Bool = false, track: Double = 40, rate: Double? = nil) -> Plane {
+        var json: [String: Any] = ["hex": "abc123", "flight": "DAL234", "lat": lat, "lon": lon, "gs": 150, "track": track]
+        if ground { json["alt_baro"] = "ground" } else if let alt { json["alt_baro"] = alt }
+        if let rate { json["baro_rate"] = rate }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+    }
+
+    func testGuesses() {
+        // Taxiing at Logan.
+        XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.364, lon: -71.005, alt: nil, ground: true), airport: boston), .ground)
+        // On the ground at another field (Hanscom, ~14 nm): not Logan's.
+        XCTAssertNil(LikelyFacility.guess(plane(lat: 42.47, lon: -71.29, alt: nil, ground: true), airport: boston))
+        // Short final, 4 nm out at 1,200 ft.
+        XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.31, lon: -70.98, alt: 1200, rate: -700), airport: boston), .tower)
+        // 20 nm north-east, climbing away at 9,000 ft (track 45 = away from Logan).
+        XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.60, lon: -70.70, alt: 9000, track: 45, rate: 2000), airport: boston), .departure)
+        // 20 nm out, descending toward Logan.
+        XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.60, lon: -70.70, alt: 9000, track: 225, rate: -1200), airport: boston), .approach)
+        // Cruising overhead.
+        XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.40, lon: -71.00, alt: 35000), airport: boston), .center)
+    }
+}

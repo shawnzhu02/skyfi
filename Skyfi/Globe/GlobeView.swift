@@ -29,6 +29,8 @@ struct GlobeView: UIViewRepresentable {
     /// The connected airport (ICAO): highlighted, with its 60 nm range ring.
     let tunedAirport: String?
     let talking: [String: TalkStore.Talk]
+    /// Starred airports (ICAO): an amber star on their labels.
+    var favorites: [String] = []
     let look: MapLook
     @Binding var selectedPlaneID: String?
     @Binding var selectedAirport: Airport?
@@ -108,6 +110,7 @@ struct GlobeView: UIViewRepresentable {
         private let arrow = UIImageView(image: UIImage(systemName: "location.north.fill",
                                                        withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)))
         private var lastTuned: String?
+        private var lastFavorites: [String] = []
         private var rangeRing: MKCircle?
 
         static let maxPlanes = 1500
@@ -209,7 +212,9 @@ struct GlobeView: UIViewRepresentable {
                 lastTuned = parent.tunedAirport
                 syncRangeRing(map)
             }
-            syncAirports(map, force: tunedChanged)
+            let favoritesChanged = parent.favorites != lastFavorites
+            lastFavorites = parent.favorites
+            syncAirports(map, force: tunedChanged || favoritesChanged)
         }
 
         /// A faint ring showing the 60 nm the connected airport's planes come from.
@@ -290,6 +295,8 @@ struct GlobeView: UIViewRepresentable {
                 includeMedium: false, limit: 150)
             // Airports you can connect to are always on the map, at any zoom.
             airports += Catalog.connectable.compactMap { AirportIndex.shared.airport(icao: $0) }
+            // So are your starred ones.
+            airports += parent.favorites.compactMap { AirportIndex.shared.airport(icao: $0) }
             let wanted = Dictionary(airports.map { ($0.icao, $0) }, uniquingKeysWith: { a, _ in a })
             let gone = airportAnnotations.filter { wanted[$0.key] == nil }
             if !gone.isEmpty {
@@ -300,7 +307,8 @@ struct GlobeView: UIViewRepresentable {
             for (icao, airport) in wanted {
                 if let existing = airportAnnotations[icao] {
                     if let view = map.view(for: existing) as? AirportAnnotationView {
-                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: Catalog.connectable.contains(icao))
+                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: Catalog.connectable.contains(icao),
+                                       favorite: parent.favorites.contains(icao))
                     }
                 } else {
                     let annotation = AirportAnnotation(airport)
@@ -337,7 +345,8 @@ struct GlobeView: UIViewRepresentable {
             if let airport = annotation as? AirportAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: AirportAnnotationView.reuseID, for: airport) as! AirportAnnotationView
                 view.configure(airport: airport.airport, tuned: airport.airport.icao == parent.tunedAirport,
-                               hasFeed: Catalog.connectable.contains(airport.airport.icao))
+                               hasFeed: Catalog.connectable.contains(airport.airport.icao),
+                               favorite: parent.favorites.contains(airport.airport.icao))
                 return view
             }
             return nil

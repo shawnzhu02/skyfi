@@ -147,6 +147,9 @@ struct MixerSheet: View {
             .scrollContentBackground(.hidden)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search airports (BOS, Logan, Boston)")
             .navigationTitle("Mixer")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { sleepMenu }
+            }
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -196,6 +199,27 @@ struct MixerSheet: View {
             }
             .font(.system(size: 12))
         }
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            ForEach([15, 30, 60, 90], id: \.self) { minutes in
+                Button("\(minutes) minutes") { mixer.setSleepTimer(minutes: minutes) }
+            }
+            if mixer.sleepAt != nil {
+                Button("Turn off", role: .destructive) { mixer.setSleepTimer(minutes: nil) }
+            }
+        } label: {
+            if let at = mixer.sleepAt {
+                Label { Text(at, style: .timer) } icon: { Image(systemName: "moon.zzz.fill") }
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.amber)
+            } else {
+                Image(systemName: "moon.zzz").foregroundStyle(Theme.text)
+            }
+        }
+        .accessibilityLabel("Sleep timer")
     }
 
     /// Starred airports first, then recent ones that aren't starred.

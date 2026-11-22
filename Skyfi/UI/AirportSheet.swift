@@ -38,8 +38,24 @@ struct AirportSheet: View {
 
                 Section {
                     if feeds.isEmpty {
-                        Text("No live feed for this airport in Skyfi yet.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        if isConnected {
+                            Button { mixer.disconnect() } label: {
+                                Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.cyan)
+                            }
+                        }
+                        Button {
+                            mixer.connectViaLiveATC(airport)
+                            onConnect()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Label(isConnected ? "Show LiveATC's feeds here" : "Find feeds on LiveATC",
+                                      systemImage: "magnifyingglass")
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.cyan)
+                                Text("Skyfi has no feed list for \(airport.code). LiveATC's page shows any it has; pick one there.")
+                                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            }
+                        }
                     } else {
                         connectButton
                         if isConnected, mixer.towerInBrowser {
