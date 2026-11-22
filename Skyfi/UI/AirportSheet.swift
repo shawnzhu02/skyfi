@@ -47,6 +47,7 @@ struct AirportSheet: View {
                 WeatherSection(airport: airport, metar: weather.metar(airport.icao),
                                runways: atisRunways.isEmpty ? RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)) : nil)
                 ATISSection(broadcasts: broadcasts, runways: atisRunways)
+                FrequenciesSection(frequencies: FrequencyIndex.shared.frequencies(airport.icao))
 
                 Section {
                     if feeds.isEmpty, !mixer.towerInBrowser {
@@ -406,5 +407,37 @@ struct AirportClock: View {
         f.timeZone = zone
         f.timeStyle = .short
         return f.string(from: date)
+    }
+}
+
+/// Published frequencies (tower, ground, approach…), folded away until you want them.
+struct FrequenciesSection: View {
+    let frequencies: [Frequency]
+    @State private var open = false
+
+    var body: some View {
+        if !frequencies.isEmpty {
+            Section {
+                DisclosureGroup(isExpanded: $open) {
+                    ForEach(frequencies, id: \.self) { frequency in
+                        HStack(spacing: 10) {
+                            Text(frequency.kind)
+                                .font(Theme.mono(10, .bold)).foregroundStyle(Theme.cyan)
+                                .frame(width: 38, alignment: .leading)
+                            Text(frequency.name).font(.system(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
+                            Spacer(minLength: 6)
+                            Text(frequency.mhzText).font(Theme.mono(13, .semibold)).foregroundStyle(Theme.text)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                } label: {
+                    Label("Frequencies (\(frequencies.count))", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                }
+                .tint(Theme.muted)
+            } footer: {
+                if open { Text("From OurAirports. Not for navigation.") }
+            }
+        }
     }
 }

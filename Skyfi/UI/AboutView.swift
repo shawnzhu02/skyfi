@@ -33,7 +33,7 @@ struct AboutView: View {
                 credit("Tower audio", "LiveATC.net, through its own player", "https://www.liveatc.net")
                 credit("Planes", "adsb.lol (ODbL), adsb.fi as a fallback", "https://adsb.lol")
                 credit("Weather", "aviationweather.gov (NOAA)", "https://aviationweather.gov")
-                credit("Airports and runways", "OurAirports (public domain)", "https://ourairports.com")
+                credit("Airports, runways and frequencies", "OurAirports (public domain)", "https://ourairports.com")
                 credit("Who's talking model", "Whisper small.en fine-tuned on ATCO2", "https://huggingface.co/stebox/whisperkit-atc-coreml")
             }
 

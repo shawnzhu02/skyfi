@@ -321,7 +321,9 @@ struct PlaneCard: View {
                 // Only an emergency code earns the room (the row is full on small phones).
                 if plane.emergency != nil, let squawk = plane.squawk { stat("SQK", squawk) }
                 if let airport = traffic.connected, let facility = LikelyFacility.guess(plane, airport: airport) {
-                    stat("ON", facility.rawValue)
+                    // "TWR 128.8" when the airport has just one tower frequency.
+                    let mhz = FrequencyIndex.shared.single(airport.icao, kind: facility.rawValue)?.mhzText
+                    stat("ON", [facility.rawValue, mhz].compactMap { $0 }.joined(separator: " "))
                         .accessibilityLabel("Likely talking to \(airport.code) \(facility.label)")
                 }
             }

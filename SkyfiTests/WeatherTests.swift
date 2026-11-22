@@ -291,3 +291,18 @@ final class ClockTests: XCTestCase {
         XCTAssertEqual(AirportClock.zulu(Date(timeIntervalSince1970: 1795334040)), "0754Z")
     }
 }
+
+final class FrequencyTests: XCTestCase {
+    func testParseAndText() throws {
+        let json = #"{"KBOS":[["TWR","Boston Tower West",128.8],["TWR","Boston Tower East",132.225],["GND","Ground",121.9],["bad"]]}"#
+        let index = FrequencyIndex(FrequencyIndex.parse(Data(json.utf8)))
+        XCTAssertEqual(index.frequencies("KBOS").map(\.mhzText), ["128.8", "132.225", "121.9"])
+        XCTAssertNil(index.single("KBOS", kind: "TWR"))
+        XCTAssertEqual(index.single("KBOS", kind: "GND")?.mhzText, "121.9")
+        XCTAssertEqual(Frequency(kind: "ATIS", name: "ATIS", mhz: 135).mhzText, "135.0")
+    }
+
+    func testBundledDataLoads() {
+        XCTAssertFalse(FrequencyIndex.shared.frequencies("KBOS").isEmpty)
+    }
+}
