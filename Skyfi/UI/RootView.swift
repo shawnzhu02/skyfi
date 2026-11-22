@@ -42,6 +42,7 @@ struct RootView: View {
     /// No position report for 15 s: the plane may have dropped out of receiver range.
     static func lostSignal(_ plane: Plane) -> Bool { Date().timeIntervalSince(plane.fixTime) > 15 }
     @AppStorage("altitudeColors") private var altitudeColors = false
+    @AppStorage("keepAwake") private var keepAwake = false
     @State private var locator = Locator.shared
     @State private var locationDenied = false
 
@@ -154,6 +155,10 @@ struct RootView: View {
         .onChange(of: runwayInputs, initial: true) { _, _ in
             let picked = pickActiveRunways()
             if picked != activeRunways { activeRunways = picked }
+        }
+        .onChange(of: keepAwake && traffic.connected != nil, initial: true) { _, awake in
+            // A desk radio: the map stays up while you listen.
+            UIApplication.shared.isIdleTimerDisabled = awake
         }
         .onChange(of: locator.denied) { _, denied in
             if denied { locationDenied = true }

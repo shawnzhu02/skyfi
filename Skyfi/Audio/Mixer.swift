@@ -752,7 +752,8 @@ final class Mixer {
         }
         info[MPNowPlayingInfoPropertyIsLiveStream] = music?.isLive ?? true
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        if let artwork { info[MPMediaItemPropertyArtwork] = artwork }
+        // Tower only (or music without a thumbnail): Skyfi's own tile instead of a blank square.
+        info[MPMediaItemPropertyArtwork] = artwork ?? Self.towerArtwork
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
@@ -765,6 +766,26 @@ final class Mixer {
             self.updateNowPlaying()
         }
     }
+
+    /// A night-sky tile with the radio waves symbol, for the lock screen.
+    private static let towerArtwork: MPMediaItemArtwork = {
+        let size = CGSize(width: 600, height: 600)
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let colors = [UIColor(red: 0.03, green: 0.05, blue: 0.12, alpha: 1).cgColor,
+                          UIColor(red: 0.08, green: 0.16, blue: 0.32, alpha: 1).cgColor]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            }
+            let config = UIImage.SymbolConfiguration(pointSize: 260, weight: .semibold)
+            if let symbol = UIImage(systemName: "antenna.radiowaves.left.and.right", withConfiguration: config)?
+                .withTintColor(Theme.uiCyan, renderingMode: .alwaysOriginal) {
+                let rect = CGRect(x: (size.width - symbol.size.width) / 2, y: (size.height - symbol.size.height) / 2,
+                                  width: symbol.size.width, height: symbol.size.height)
+                symbol.draw(in: rect)
+            }
+        }
+        return makeArtwork(image)
+    }()
 
     /// Built outside the main actor: MediaPlayer calls the handler on its own queue.
     nonisolated private static func makeArtwork(_ image: UIImage) -> MPMediaItemArtwork {

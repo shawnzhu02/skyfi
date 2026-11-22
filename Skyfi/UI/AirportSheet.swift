@@ -151,6 +151,14 @@ struct AirportSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Opens Skyfi on this airport for anyone with the app.
+                    ShareLink(item: URL(string: "skyfi://connect/\(airport.icao)")!,
+                              message: Text("Listen to \(airport.name) on Skyfi")) {
+                        Image(systemName: "square.and.arrow.up").foregroundStyle(Theme.cyan)
+                    }
+                    .accessibilityLabel("Share airport")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         places.toggleFavorite(airport.icao)
                     } label: {
