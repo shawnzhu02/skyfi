@@ -269,7 +269,7 @@ struct PlaneCard: View {
             }
             if let airport = traffic.connected, EventDetector.isApproaching(plane, to: airport),
                let minutes = EventDetector.minutesToLanding(plane, at: airport) {
-                Text("Landing \(airport.code) in about \(minutes) min")
+                Text("Landing \(airport.code)\(EventDetector.landingRunway(plane, at: airport).map { " \($0)" } ?? "") in about \(minutes) min")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.cyan)
             }
             HStack(spacing: 14) {

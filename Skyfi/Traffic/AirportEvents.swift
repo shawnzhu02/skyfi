@@ -58,6 +58,12 @@ enum EventDetector {
         return max(1, Int((distance / speed * 60 + 1).rounded()))
     }
 
+    /// The runway an approaching plane is lined up for: its track within 15° of a runway heading.
+    static func landingRunway(_ plane: Plane, at airport: Airport) -> String? {
+        guard let track = plane.track else { return nil }
+        return AirportIndex.runwayEnd(at: airport, heading: track, tolerance: 15)?.id
+    }
+
     static func isApproaching(_ plane: Plane, to airport: Airport) -> Bool {
         guard !plane.onGround, let altitude = plane.altitude, let track = plane.track else { return false }
         let distance = Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon)

@@ -234,3 +234,17 @@ final class ATISTests: XCTestCase {
         XCTAssertTrue(ATIS.runways(in: broadcasts, airport: boston).isEmpty)
     }
 }
+
+final class LandingRunwayTests: XCTestCase {
+    func testLinedUpRunway() throws {
+        let boston = try XCTUnwrap(AirportIndex.shared.airport(icao: "KBOS"))
+        func plane(track: Double) -> Plane {
+            let json: [String: Any] = ["hex": "abc123", "flight": "DAL234", "lat": 42.30, "lon": -71.05, "alt_baro": 2000, "gs": 150, "track": track]
+            let data = try! JSONSerialization.data(withJSONObject: json)
+            return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+        }
+        // Logan's 33s have a true heading of 315.
+        XCTAssertTrue(["33L", "33R"].contains(EventDetector.landingRunway(plane(track: 318), at: boston) ?? ""))
+        XCTAssertNil(EventDetector.landingRunway(plane(track: 270 - 40), at: boston), "230° matches nothing within 15°")
+    }
+}
