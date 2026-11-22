@@ -221,6 +221,11 @@ final class LiveATCBrowser {
 
     fileprivate func handleMedia(type: String, detail: String, host: String) {
         dlog("web", "media \(type)\(detail.isEmpty ? "" : " \(detail)")\(host.isEmpty ? "" : " via \(host)")")
+        // You tapped play on the page while Skyfi had it paused: that's a resume, not something to block.
+        if type == "play", suspended {
+            Mixer.shared.resume()
+            return
+        }
         switch type {
         case "play", "waiting", "stalled": setMedia(.loading)
         case "playing": setMedia(.playing)
@@ -378,6 +383,8 @@ struct LiveATCPanel: View {
     @Environment(\.openURL) private var openURL
     /// Half height leaves the map in view; tall shows more of LiveATC's page.
     @AppStorage("liveATCPanelTall") private var tall = false
+    /// Opens the mixer (it sits under the panel while the panel is up).
+    var onMixer: () -> Void = {}
 
     var body: some View {
         GeometryReader { geo in
@@ -426,9 +433,7 @@ struct LiveATCPanel: View {
     private var header: some View {
         HStack(spacing: 4) {
             iconButton("chevron.down", label: "Minimize") { browser.minimize() }
-            iconButton(tall ? "rectangle.compress.vertical" : "rectangle.expand.vertical", label: tall ? "Shorter" : "Taller") {
-                tall.toggle()
-            }
+            iconButton("slider.horizontal.3", label: "Mixer") { onMixer() }
             VStack(alignment: .leading, spacing: 1) {
                 Text(browser.feed?.name ?? "LiveATC")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
@@ -442,9 +447,23 @@ struct LiveATCPanel: View {
             iconButton("chevron.backward", label: "Back") { browser.goBack() }
                 .disabled(!browser.canGoBack)
                 .opacity(browser.canGoBack ? 1 : 0.35)
-            iconButton("arrow.clockwise", label: "Reload") { browser.reload() }
             iconButton("list.bullet", label: "All feeds at this airport") { browser.showAllFeeds() }
-            iconButton("safari", label: "Open in Safari") { openInSafari() }
+            // The rest fit in a menu, so the header stays one row on small phones.
+            Menu {
+                Button { tall.toggle() } label: {
+                    Label(tall ? "Shorter panel" : "Taller panel",
+                          systemImage: tall ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+                }
+                Button { browser.reload() } label: { Label("Reload", systemImage: "arrow.clockwise") }
+                Button { openInSafari() } label: { Label("Open in Safari", systemImage: "safari") }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 34, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("More")
             iconButton("xmark", label: "Stop tower") { mixer.stopTower() }
         }
         .padding(.horizontal, 6)
@@ -504,6 +523,13 @@ struct LiveATCMiniBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            if browser.suspended {
+                Button { mixer.resume() } label: {
+                    Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.cyan)
+                        .frame(width: 32, height: 32)
+                }
+                .accessibilityLabel("Resume")
+            }
             Button { mixer.stopTower() } label: {
                 Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.muted)
                     .frame(width: 32, height: 32)

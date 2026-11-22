@@ -18,6 +18,9 @@ struct RootView: View {
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
     @State private var resumeDismissed = false
+
+    /// No position report for 15 s: the plane may have dropped out of receiver range.
+    static func lostSignal(_ plane: Plane) -> Bool { Date().timeIntervalSince(plane.fixTime) > 15 }
     @AppStorage("altitudeColors") private var altitudeColors = false
     @State private var locator = Locator.shared
     @State private var locationDenied = false
@@ -31,7 +34,9 @@ struct RootView: View {
                       trail: traffic.trail(selectedPlaneID), look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 },
-                      followSelected: following, onUserMove: { following = false },
+                      // Don't keep the camera on a frozen dot once reports stop.
+                      followSelected: following && !(selectedPlane.map(Self.lostSignal) ?? false),
+                      onUserMove: { following = false },
                       showUser: locator.authorized, altitudeColors: altitudeColors)
                 .ignoresSafeArea()
 
@@ -43,6 +48,7 @@ struct RootView: View {
                         Label("\(plane.title) squawking \(plane.squawk ?? "") · \(kind)", systemImage: "exclamationmark.triangle.fill")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(Color.red.opacity(0.85), in: Capsule())
@@ -51,7 +57,8 @@ struct RootView: View {
                 }
                 if seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
                    let icao = Places.shared.recents.first, let airport = AirportIndex.shared.airport(icao: icao) {
-                    ResumeChip(airport: airport, music: mixer.lastMusicTitle) {
+                    ResumeChip(airport: airport, music: mixer.lastMusicTitle,
+                               note: mixer.towerInBrowser ? "Then tap play on LiveATC's page" : "Where you left off") {
                         resumeDismissed = true
                         // Works for airports without a Skyfi feed list too (LiveATC's airport page).
                         mixer.connectViaLiveATC(airport)
@@ -85,7 +92,7 @@ struct RootView: View {
             .animation(.spring(duration: 0.3), value: browser.expanded)
 
             if browser.isOpen {
-                LiveATCPanel()
+                LiveATCPanel { showMixer = true }
                     .padding(.bottom, 4)
             }
         }
@@ -93,15 +100,16 @@ struct RootView: View {
         .onAppear {
             traffic.setActive(true)
             // A shortcut may have connected before this view was watching.
-            if let icao = mixer.airport, traffic.connected?.icao != icao {
-                traffic.connect(AirportIndex.shared.airport(icao: icao))
+            if let icao = mixer.airport, traffic.connected?.icao != icao, let airport = AirportIndex.shared.airport(icao: icao) {
+                traffic.connect(airport)
+                focus = MapFocus(airport.coordinate, spanDegrees: 2.9)
             }
         }
         .onOpenURL { url in
             if let airport = SkyfiLink.airport(from: url) {
                 dlog("app", "link: connect \(airport.icao)")
                 selectedAirport = nil
-                mixer.connect(airport)
+                mixer.connectViaLiveATC(airport)
             }
         }
         .onChange(of: selectedPlaneID) { _, _ in following = false }
@@ -305,8 +313,16 @@ struct PlaneCard: View {
             if let line = [plane.operatorName, plane.typeName].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty {
                 Text(line).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
+            if RootView.lostSignal(plane) {
+                Label("No signal for \(Int(Date().timeIntervalSince(plane.fixTime))) s", systemImage: "antenna.radiowaves.left.and.right.slash")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
+            }
             if let route {
-                Text(route).font(Theme.mono(13)).foregroundStyle(Theme.amber)
+                if !plane.onGround, let progress = FlightProgress.from(route: route, plane: plane) {
+                    ProgressRow(progress: progress)
+                } else {
+                    Text(route).font(Theme.mono(13)).foregroundStyle(Theme.amber)
+                }
             }
             if let airport = traffic.connected, EventDetector.isApproaching(plane, to: airport),
                let minutes = EventDetector.minutesToLanding(plane, at: airport) {
@@ -501,6 +517,7 @@ struct FirstRunTip: View {
 struct ResumeChip: View {
     let airport: Airport
     let music: String?
+    let note: String
     var onResume: () -> Void
     var onClose: () -> Void
 
@@ -512,7 +529,7 @@ struct ResumeChip: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Resume \(airport.code)\(music.map { " + \($0)" } ?? "")")
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                        Text("Where you left off").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        Text(note).font(.system(size: 11)).foregroundStyle(Theme.muted)
                     }
                     Spacer(minLength: 0)
                 }
@@ -528,5 +545,34 @@ struct ResumeChip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .panel()
+    }
+}
+
+/// BOS ━━━━✈︎───── LAX, with the distance left.
+struct ProgressRow: View {
+    let progress: FlightProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(progress.from.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.amber)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.muted.opacity(0.3)).frame(height: 3)
+                        Capsule().fill(Theme.amber).frame(width: geo.size.width * progress.fraction, height: 3)
+                        Image(systemName: "airplane")
+                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.amber)
+                            .offset(x: max(0, geo.size.width * progress.fraction - 6))
+                    }
+                    .frame(maxHeight: .infinity)
+                }
+                .frame(height: 14)
+                Text(progress.to.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.amber)
+            }
+            Text("\(Int(progress.remainingNM.rounded()).formatted()) nm to \(progress.to.city ?? progress.to.code)")
+                .font(.system(size: 11)).foregroundStyle(Theme.muted)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(progress.from.code) to \(progress.to.code), \(Int(progress.fraction * 100)) percent flown, \(Int(progress.remainingNM)) nautical miles to go")
     }
 }

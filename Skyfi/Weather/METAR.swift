@@ -159,10 +159,11 @@ final class WeatherStore {
 
     /// One request for several airports (the API takes a comma list), for lists of airports.
     func refresh(many icaos: [String]) async {
-        let due = icaos.filter { fetched[$0].map { Date().timeIntervalSince($0) >= 600 } ?? true }
+        // One request holds 30; the rest wait for the next refresh.
+        let due = Array(icaos.filter { fetched[$0].map { Date().timeIntervalSince($0) >= 600 } ?? true }.prefix(30))
         guard !due.isEmpty else { return }
         for icao in due { fetched[icao] = Date() }
-        let ids = due.prefix(30).joined(separator: ",")
+        let ids = due.joined(separator: ",")
         guard let url = URL(string: "https://aviationweather.gov/api/data/metar?ids=\(ids)&format=json") else { return }
         do {
             let (data, _) = try await URLSession.shared.data(from: url)

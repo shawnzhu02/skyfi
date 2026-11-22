@@ -53,14 +53,7 @@ final class PlaneAnnotationView: MKAnnotationView {
     /// tar1090-style altitude colors: orange low, through yellow and green, to blue and violet high.
     static func altitudeColor(_ feet: Int?) -> UIColor {
         guard let feet else { return Theme.uiAmber }
-        let stops: [(Int, UIColor)] = [
-            (0, UIColor(red: 1.0, green: 0.45, blue: 0.15, alpha: 1)),
-            (4000, UIColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1)),
-            (10000, UIColor(red: 0.45, green: 0.9, blue: 0.3, alpha: 1)),
-            (20000, UIColor(red: 0.25, green: 0.8, blue: 1.0, alpha: 1)),
-            (30000, UIColor(red: 0.45, green: 0.5, blue: 1.0, alpha: 1)),
-            (40000, UIColor(red: 0.8, green: 0.4, blue: 1.0, alpha: 1)),
-        ]
+        let stops = altitudeStops
         if feet <= stops[0].0 { return stops[0].1 }
         for (low, high) in zip(stops, stops.dropFirst()) where feet <= high.0 {
             let t = CGFloat(feet - low.0) / CGFloat(high.0 - low.0)
@@ -71,6 +64,15 @@ final class PlaneAnnotationView: MKAnnotationView {
         }
         return stops.last!.1
     }
+
+    private static let altitudeStops: [(Int, UIColor)] = [
+        (0, UIColor(red: 1.0, green: 0.45, blue: 0.15, alpha: 1)),
+        (4000, UIColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1)),
+        (10000, UIColor(red: 0.45, green: 0.9, blue: 0.3, alpha: 1)),
+        (20000, UIColor(red: 0.25, green: 0.8, blue: 1.0, alpha: 1)),
+        (30000, UIColor(red: 0.45, green: 0.5, blue: 1.0, alpha: 1)),
+        (40000, UIColor(red: 0.8, green: 0.4, blue: 1.0, alpha: 1)),
+    ]
 
     private static let images: [Style: UIImage] = {
         var result: [Style: UIImage] = [:]
@@ -155,15 +157,17 @@ final class PlaneAnnotationView: MKAnnotationView {
     }
 
     /// Widebodies draw bigger and light aircraft smaller, so a 777 stands out from a Cessna.
+    private static let heavyPrefixes = ["B74", "B76", "B77", "B78", "A30", "A33", "A34", "A35", "A38", "MD11", "IL76", "A124", "KC10", "KC46"]
+    // Exact codes: "C17"/"C5" as prefixes would catch Cessna 172s and Citations.
+    private static let heavyCodes: Set<String> = ["C17", "C5", "C5M"]
+    private static let lightPrefixes = ["C1", "C2", "PA", "P28", "SR2", "BE", "DA4", "DA2", "M20", "TB", "R44", "R22", "EC", "AS3", "H1"]
+
     static func scale(forType type: String?) -> CGFloat {
         guard let type = type?.uppercased(), !type.isEmpty else { return 1 }
-        let heavy = ["B74", "B76", "B77", "B78", "A30", "A33", "A34", "A35", "A38", "MD11", "IL76", "A124", "KC10", "KC46"]
-        // Exact codes: "C17"/"C5" as prefixes would catch Cessna 172s and Citations.
-        if heavy.contains(where: type.hasPrefix) || ["C17", "C5", "C5M"].contains(type) { return 1.3 }
+        if heavyPrefixes.contains(where: type.hasPrefix) || heavyCodes.contains(type) { return 1.3 }
         // C-130s and C-2s are four-engine/military mediums, not Cessnas.
         if type.hasPrefix("C13") || type.hasPrefix("C30J") || type == "C2" { return 1 }
-        let light = ["C1", "C2", "PA", "P28", "SR2", "BE", "DA4", "DA2", "M20", "TB", "R44", "R22", "EC", "AS3", "H1"]
-        if light.contains(where: type.hasPrefix) { return 0.72 }
+        if lightPrefixes.contains(where: type.hasPrefix) { return 0.72 }
         return 1
     }
 

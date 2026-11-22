@@ -49,9 +49,13 @@ final class Mixer {
             dlog("atc", "tower in LiveATC player: \(towerInBrowser)")
             // Reconnect in the new mode, but only restart the tower if it was on.
             guard let icao = airport else { return }
-            let towerWasOn = feed != nil
+            guard feed != nil else {
+                // Tower already off: stay on the airport (planes keep showing), just switch players.
+                LiveATCBrowser.shared.close()
+                return
+            }
             disconnect()
-            if towerWasOn, let airport = AirportIndex.shared.airport(icao: icao) { connect(airport) }
+            if let airport = AirportIndex.shared.airport(icao: icao) { connect(airport) }
         }
     }
 
@@ -263,7 +267,8 @@ final class Mixer {
             connectInBrowser(airport, candidates: candidates)
             return
         }
-        if self.airport == airport.icao, !isFailed(atcStatus) { return }
+        // Already playing this airport. After Stop tower (feed gone) a tap starts it again.
+        if self.airport == airport.icao, feed != nil, !isFailed(atcStatus) { return }
         dlog("atc", "connect \(airport.icao): \(candidates.map(\.mount).joined(separator: ", "))")
         cancelRetry(isMusic: false)
         retryCount[ObjectIdentifier(atcPlayer)] = 0
@@ -292,6 +297,8 @@ final class Mixer {
         atcStatus = .idle
         self.airport = airport.icao
         feed = chosen
+        // WebKit plays through the app's audio session; make sure it's active for background audio.
+        activateSession()
         browser.open(chosen)
         updateNowPlaying()
     }
@@ -309,9 +316,18 @@ final class Mixer {
 
     /// For an airport Skyfi has no feed list for: connects its planes and opens LiveATC's page
     /// for it, where you pick a feed (the pick becomes the tower feed).
+    /// Connects to any airport: its feeds when Skyfi has them, LiveATC's airport page in browser
+    /// mode, or just its planes otherwise. Links, Siri and the resume chip all come through here.
     func connectViaLiveATC(_ airport: Airport) {
-        if !Catalog.feeds(at: airport.icao).isEmpty || !towerInBrowser {
+        if !Catalog.feeds(at: airport.icao).isEmpty {
             connect(airport)
+            return
+        }
+        if !towerInBrowser {
+            dlog("atc", "\(airport.icao) has no feed in Skyfi: planes only")
+            Places.shared.noteConnected(airport.icao)
+            if self.airport != airport.icao { disconnect() }
+            self.airport = airport.icao
             return
         }
         let browser = LiveATCBrowser.shared
@@ -321,6 +337,7 @@ final class Mixer {
             return
         }
         dlog("atc", "connect \(airport.icao) via LiveATC's airport page")
+        activateSession()
         Places.shared.noteConnected(airport.icao)
         cancelRetry(isMusic: false)
         watchdogs["atc"]?.cancel()
@@ -616,7 +633,8 @@ final class Mixer {
             if feed != nil, !towerInBrowser { atcStatus = .paused }
             updateNowPlaying()
         case .ended:
-            if let options, AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
+            // A pause you made yourself outlasts the interruption.
+            if let options, AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume), !userPaused {
                 resume()
             }
         @unknown default: break

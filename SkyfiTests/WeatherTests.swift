@@ -306,3 +306,33 @@ final class AirportFrequencyTests: XCTestCase {
         XCTAssertFalse(FrequencyIndex.shared.frequencies("KBOS").isEmpty)
     }
 }
+
+final class ProgressTests: XCTestCase {
+    private func plane(lat: Double, lon: Double) -> Plane {
+        let json: [String: Any] = ["hex": "abc999", "flight": "UAL1", "lat": lat, "lon": lon, "gs": 450, "alt_baro": 35000, "track": 270]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+    }
+
+    func testHalfwayBostonToChicago() throws {
+        let bos = try XCTUnwrap(AirportIndex.shared.airport(code: "BOS"))
+        let ord = try XCTUnwrap(AirportIndex.shared.airport(code: "ORD"))
+        let mid = plane(lat: (bos.lat + ord.lat) / 2, lon: (bos.lon + ord.lon) / 2)
+        let progress = try XCTUnwrap(FlightProgress.from(route: "BOS → ORD", plane: mid))
+        XCTAssertEqual(progress.to.icao, "KORD")
+        XCTAssertEqual(progress.fraction, 0.5, accuracy: 0.05)
+    }
+
+    func testPicksTheLegBeingFlown() throws {
+        let ord = try XCTUnwrap(AirportIndex.shared.airport(code: "ORD"))
+        let lax = try XCTUnwrap(AirportIndex.shared.airport(code: "LAX"))
+        let west = plane(lat: (ord.lat + lax.lat) / 2, lon: (ord.lon + lax.lon) / 2)
+        let progress = try XCTUnwrap(FlightProgress.from(route: "BOS → ORD → LAX", plane: west))
+        XCTAssertEqual(progress.from.icao, "KORD")
+        XCTAssertEqual(progress.to.icao, "KLAX")
+    }
+
+    func testUnknownCodes() {
+        XCTAssertNil(FlightProgress.from(route: "ZZZ → QQQ", plane: plane(lat: 40, lon: -80)))
+    }
+}

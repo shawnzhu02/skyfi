@@ -54,7 +54,7 @@ struct ConnectAirportIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         if let match = AirportIndex.shared.airport(icao: airport.id) {
             dlog("app", "shortcut: connect \(match.icao)")
-            Mixer.shared.connect(match)
+            Mixer.shared.connectViaLiveATC(match)
         }
         return .result()
     }

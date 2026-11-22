@@ -172,7 +172,8 @@ struct AirportSheet: View {
 
     private var connectButton: some View {
         Button {
-            if isConnected, !isFailed(mixer.atcStatus) {
+            // Connected with the tower stopped: the button starts it again.
+            if isConnected, mixer.feed != nil, !isFailed(mixer.atcStatus) {
                 mixer.disconnect()
             } else {
                 mixer.connect(airport)
@@ -197,6 +198,7 @@ struct AirportSheet: View {
 
     private var title: String {
         guard isConnected else { return "Connect" }
+        if mixer.feed == nil { return "Start tower" }
         switch mixer.atcStatus {
         case .loading: return "Connecting…"
         case .failed: return "Retry now"

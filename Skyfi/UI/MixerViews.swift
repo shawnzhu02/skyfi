@@ -293,7 +293,9 @@ struct MixerSheet: View {
         linkFocused = false
         Task {
             await mixer.playYouTube(input)
-            if mixer.musicStatus != .failed("That doesn't look like a YouTube link.") { link = "" }
+            // Keep the link on any failure so you can fix or retry it.
+            if case .failed = mixer.musicStatus { return }
+            link = ""
         }
     }
 

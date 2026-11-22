@@ -431,14 +431,8 @@ struct GlobeView: UIViewRepresentable {
             // Following moves the map every second; the nearby-airports list doesn't need each step.
             if !parent.followSelected { parent.onCenterChange(mapView.region.center) }
             syncAirports(mapView, force: false)
+            // Reconfigures every visible plane too: labels and headings depend on zoom and rotation.
             syncPlanes(mapView)
-            // Labels and headings depend on zoom and rotation.
-            let tuned = parent.tunedAirport.flatMap { AirportIndex.shared.airport(icao: $0) }
-            for annotation in planeAnnotations.values {
-                if let view = mapView.view(for: annotation) as? PlaneAnnotationView {
-                    configure(view, plane: annotation.plane, tuned: tuned, map: mapView)
-                }
-            }
         }
     }
 }

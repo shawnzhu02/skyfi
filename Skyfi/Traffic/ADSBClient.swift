@@ -53,10 +53,13 @@ actor RouteLookup {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = ["planes": [["callsign": callsign, "lat": lat, "lng": lon]]]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // A cancelled lookup (you tapped another plane) or a network error is not an answer:
+        // don't cache it, so the next tap tries again.
+        guard let (data, response) = try? await URLSession.shared.data(for: request), !Task.isCancelled,
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
         var result: String?
-        if let (data, _) = try? await URLSession.shared.data(for: request),
-           let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-           let first = list.first {
+        if let first = list.first {
             let codes = (first["_airport_codes_iata"] as? String) ?? (first["airport_codes"] as? String)
             if let codes, !codes.isEmpty, codes.lowercased() != "unknown" {
                 result = codes.replacingOccurrences(of: "-", with: " → ")

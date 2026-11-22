@@ -28,11 +28,15 @@ final class AirportIndex {
 
     let all: [Airport]
     private let byICAO: [String: Airport]
+    private let byIATA: [String: Airport]
     private var cells: [Int: [Airport]] = [:]
 
     init(airports: [Airport]) {
         all = airports
         byICAO = Dictionary(airports.map { ($0.icao, $0) }, uniquingKeysWith: { first, _ in first })
+        // Large airports win a shared IATA code.
+        byIATA = Dictionary(airports.compactMap { a in a.iata.map { ($0.uppercased(), a) } },
+                            uniquingKeysWith: { first, second in first.large || !second.large ? first : second })
         for airport in airports {
             cells[Self.cell(airport.lat, airport.lon), default: []].append(airport)
         }
@@ -54,6 +58,12 @@ final class AirportIndex {
     }
 
     func airport(icao: String) -> Airport? { byICAO[icao.uppercased()] }
+
+    /// "BOS" or "KBOS".
+    func airport(code: String) -> Airport? {
+        let code = code.uppercased()
+        return code.count == 3 ? byIATA[code] : byICAO[code]
+    }
 
     /// Nearest airport within `withinNM`, searching the 3×3 cells around the point.
     func nearest(lat: Double, lon: Double, withinNM: Double) -> Airport? {
