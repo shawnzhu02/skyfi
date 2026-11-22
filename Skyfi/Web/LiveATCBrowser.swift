@@ -1,3 +1,4 @@
+import Network
 import Observation
 import SwiftUI
 import WebKit
@@ -39,6 +40,9 @@ final class LiveATCBrowser {
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var pollTask: Task<Void, Never>?
 
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
+    @ObservationIgnored private var online = true
+
     private init() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
@@ -55,6 +59,11 @@ final class LiveATCBrowser {
         webView.scrollView.backgroundColor = .black
         webView.allowsBackForwardNavigationGestures = true
         helper.owner = self
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let up = path.status == .satisfied
+            Task { @MainActor in self?.networkChanged(up) }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "com.shawnzhu.skyfi.network", qos: .utility))
         webView.navigationDelegate = helper
         webView.uiDelegate = helper
 
@@ -249,6 +258,17 @@ final class LiveATCBrowser {
         guard ns.code != NSURLErrorCancelled else { return }
         dlog("web", "load failed: \(ns.domain) \(ns.code) \(ns.localizedDescription)")
         setMedia(.failed(ns.localizedDescription))
+    }
+
+    /// Back online after a drop (a tunnel, a dead zone): reload a page that failed, so you only tap play.
+    private func networkChanged(_ up: Bool) {
+        defer { online = up }
+        guard up, !online else { return }
+        dlog("web", "network back")
+        if isOpen, !suspended, case .failed = media {
+            dlog("web", "reloading the player after the network came back")
+            webView.reload()
+        }
     }
 
     fileprivate func contentProcessEnded() {
