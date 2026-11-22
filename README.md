@@ -10,6 +10,9 @@ A live flight globe with a soundtrack (iPhone, SwiftUI).
 - Search airports and flights, recents, near me, sleep timer, a resume chip at launch, a debug log to share.
 - Siri and Shortcuts ("Connect to BOS in Skyfi", "Pause Skyfi") and `skyfi://connect/BOS` links.
 - Optional altitude colors for planes, VoiceOver labels on the map, local time and Zulu on airport cards.
+- Airport cards also carry the TAF forecast, published frequencies, nearby towers for feedless airports and a share link; the connected airport's runways are drawn, with the ones in use and their approach centerlines in cyan.
+- Plane cards show a route progress bar, distance and direction from the airport; Activity lists notable planes (military, rare types, emergencies) and searches flights worldwide.
+- AirPlay picker, keep-screen-on option, lock-screen artwork for the tower.
 - Who's talking: an ATC-trained Whisper model on the phone transcribes the tower, matches the callsign to a plane near the airport and makes it glow on the map. It needs Skyfi's own player, which LiveATC currently refuses.
 - Audio keeps playing with the app closed or the phone locked, with lock-screen controls.
 
