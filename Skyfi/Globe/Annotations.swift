@@ -107,9 +107,22 @@ final class PlaneAnnotationView: MKAnnotationView {
         }
         // The SF Symbol "airplane" points east, so 90° is "no turn".
         let angle = ((plane.track ?? 90) - mapHeading - 90) * .pi / 180
-        glyph.transform = CGAffineTransform(rotationAngle: angle)
+        let scale = Self.scale(forType: plane.type)
+        glyph.transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale, y: scale)
         label.isHidden = !showLabel
         label.text = plane.title
+    }
+
+    /// Widebodies draw bigger and light aircraft smaller, so a 777 stands out from a Cessna.
+    static func scale(forType type: String?) -> CGFloat {
+        guard let type = type?.uppercased(), !type.isEmpty else { return 1 }
+        let heavy = ["B74", "B76", "B77", "B78", "A30", "A33", "A34", "A35", "A38", "MD11", "C17", "C5", "IL76", "A124", "KC10", "KC46"]
+        if heavy.contains(where: type.hasPrefix) { return 1.3 }
+        // C-130s and C-2s are four-engine/military mediums, not Cessnas.
+        if type.hasPrefix("C13") || type.hasPrefix("C30J") || type == "C2" { return 1 }
+        let light = ["C1", "C2", "PA", "P28", "SR2", "BE", "DA4", "DA2", "M20", "TB", "R44", "R22", "EC", "AS3", "H1"]
+        if light.contains(where: type.hasPrefix) { return 0.72 }
+        return 1
     }
 
     /// For tests: whether the ring shows, and the bubble's text.

@@ -168,3 +168,14 @@ final class ETATests: XCTestCase {
         XCTAssertNil(EventDetector.minutesToLanding(plane(speed: nil), at: boston))
     }
 }
+
+final class PlaneSizeTests: XCTestCase {
+    func testSizesByType() {
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "B77W"), 1.3)
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "a359"), 1.3)
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "A321"), 1)
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "E75L"), 1)
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: "C172"), 0.72)
+        XCTAssertEqual(PlaneAnnotationView.scale(forType: nil), 1)
+    }
+}
