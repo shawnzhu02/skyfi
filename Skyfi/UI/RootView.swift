@@ -92,7 +92,11 @@ struct RootView: View {
             .presentationBackground(.ultraThinMaterial)
         }
         .sheet(isPresented: $showActivity) {
-            ActivityList(events: traffic.events) { event in
+            ActivityList(events: traffic.events, planes: Array(traffic.planes.values), onPickPlane: { plane in
+                showActivity = false
+                selectedPlaneID = plane.id
+                focus = MapFocus(plane.coordinate)
+            }) { event in
                 showActivity = false
                 if let plane = traffic.planes[event.planeID] {
                     selectedPlaneID = plane.id
@@ -226,12 +230,38 @@ struct PlaneCard: View {
 
 struct ActivityList: View {
     let events: [AirportEvent]
+    var planes: [Plane] = []
+    var onPickPlane: (Plane) -> Void = { _ in }
     var onPick: (AirportEvent) -> Void
+    @State private var query = ""
 
     var body: some View {
         NavigationStack {
             Group {
-                if events.isEmpty {
+                if !query.isEmpty {
+                    let found = Self.search(planes, query)
+                    if found.isEmpty {
+                        ContentUnavailableView.search(text: query)
+                    } else {
+                        List(found) { plane in
+                            Button { onPickPlane(plane) } label: {
+                                HStack {
+                                    Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
+                                    if let type = plane.type {
+                                        Text(type).font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                                    }
+                                    if let name = plane.operatorName {
+                                        Text(name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.amber)
+                                }
+                            }
+                            .listRowBackground(Color.clear)
+                        }
+                        .listStyle(.plain)
+                    }
+                } else if events.isEmpty {
                     ContentUnavailableView("No takeoffs or landings yet", systemImage: "airplane.departure",
                                            description: Text("Zoom in near a busy airport. Takeoffs and landings show up here as they happen."))
                 } else {
@@ -244,7 +274,20 @@ struct ActivityList: View {
             }
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "Find a flight (DAL234, N123AB, A321)")
         }
+    }
+
+    /// Planes on the map matching a callsign, registration, type or airline.
+    static func search(_ planes: [Plane], _ query: String) -> [Plane] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }
+        return planes.filter { plane in
+            [plane.callsign, plane.registration, plane.type, plane.operatorName, plane.id]
+                .compactMap { $0?.lowercased() }
+                .contains { $0.contains(q) }
+        }
+        .sorted { $0.title < $1.title }
     }
 }
 
