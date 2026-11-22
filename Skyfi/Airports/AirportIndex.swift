@@ -14,6 +14,21 @@ struct RunwayStrip: Decodable, Hashable {
     let ids: [String]
     let w: Double
 
+    /// The extended centerline out from the threshold of runway `id` (where landing planes come from),
+    /// `nm` nautical miles long. nil if `id` isn't one of this strip's ends.
+    func approachLine(for id: String, nm: Double = 10) -> [MKMapPoint]? {
+        guard a.count == 2, b.count == 2, let end = ids.firstIndex(of: id) else { return nil }
+        let threshold = end == 0 ? a : b
+        let far = end == 0 ? b : a
+        let pt = MKMapPoint(CLLocationCoordinate2D(latitude: threshold[0], longitude: threshold[1]))
+        let pf = MKMapPoint(CLLocationCoordinate2D(latitude: far[0], longitude: far[1]))
+        let dx = pt.x - pf.x, dy = pt.y - pf.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        guard length > 0 else { return nil }
+        let reach = nm * 1852 * MKMapPointsPerMeterAtLatitude(threshold[0])
+        return [pt, MKMapPoint(x: pt.x + dx / length * reach, y: pt.y + dy / length * reach)]
+    }
+
     /// The four corners in map points, `w` meters wide.
     func corners() -> [MKMapPoint]? {
         guard a.count == 2, b.count == 2 else { return nil }

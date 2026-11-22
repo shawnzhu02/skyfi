@@ -139,7 +139,7 @@ struct GlobeView: UIViewRepresentable {
         private var lastTuned: String?
         private var lastFavorites: [String] = []
         private var rangeRing: MKCircle?
-        private var runwayShapes: [RunwayPolygon] = []
+        private var runwayShapes: [MKOverlay] = []
         private var runwayKey = ""
         private var trailLine: MKPolyline?
         private var lastTrail: (id: String?, count: Int, last: CLLocationCoordinate2D?) = (nil, 0, nil)
@@ -291,6 +291,12 @@ struct GlobeView: UIViewRepresentable {
                 let shape = RunwayPolygon(points: corners, count: corners.count)
                 shape.active = strip.ids.contains(where: parent.activeRunways.contains)
                 runwayShapes.append(shape)
+                // Dashed final approach out from each end in use.
+                for id in strip.ids where parent.activeRunways.contains(id) {
+                    if let line = strip.approachLine(for: id) {
+                        runwayShapes.append(ApproachLine(points: line, count: line.count))
+                    }
+                }
             }
             map.addOverlays(runwayShapes, level: .aboveRoads)
         }
@@ -429,6 +435,13 @@ struct GlobeView: UIViewRepresentable {
                 renderer.lineWidth = 0.5
                 return renderer
             }
+            if let approach = overlay as? ApproachLine {
+                let renderer = MKPolylineRenderer(polyline: approach)
+                renderer.strokeColor = Theme.uiCyan.withAlphaComponent(0.5)
+                renderer.lineWidth = 1.5
+                renderer.lineDashPattern = [8, 6]
+                return renderer
+            }
             if let line = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: line)
                 renderer.strokeColor = Theme.uiAmber.withAlphaComponent(0.8)
@@ -470,3 +483,6 @@ struct GlobeView: UIViewRepresentable {
 final class RunwayPolygon: MKPolygon {
     var active = false
 }
+
+/// A runway's extended centerline, where arrivals line up.
+final class ApproachLine: MKPolyline {}

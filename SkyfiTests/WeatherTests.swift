@@ -383,3 +383,15 @@ final class ProgressUnknownStopTests: XCTestCase {
         XCTAssertNil(FlightProgress.from(route: "BOS → QQQ → LAX", plane: plane))
     }
 }
+
+final class ApproachLineTests: XCTestCase {
+    func testCenterlineIsTenMilesOutFromTheThreshold() throws {
+        let bos = try XCTUnwrap(AirportIndex.shared.airport(icao: "KBOS"))
+        let strip = try XCTUnwrap(bos.strips?.first { $0.ids.contains("04R") })
+        let line = try XCTUnwrap(strip.approachLine(for: "04R"))
+        XCTAssertEqual(line[0].distance(to: line[1]), 18520, accuracy: 50)
+        // Landing 04R comes from the southwest: the far end is south of the threshold.
+        XCTAssertLessThan(line[1].coordinate.latitude, line[0].coordinate.latitude)
+        XCTAssertNil(strip.approachLine(for: "09"))
+    }
+}
