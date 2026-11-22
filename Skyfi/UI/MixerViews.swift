@@ -196,6 +196,7 @@ struct MixerSheet: View {
             HStack(spacing: 16) {
                 NavigationLink("Check feeds") { FeedCheckView() }
                 NavigationLink("Debug log") { DebugLogView() }
+                NavigationLink("About") { AboutView() }
             }
             .font(.system(size: 12))
         }

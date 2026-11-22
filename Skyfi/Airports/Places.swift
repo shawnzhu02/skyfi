@@ -30,6 +30,13 @@ final class Places {
         defaults.set(favorites, forKey: "favoriteAirports")
     }
 
+    func clearAll() {
+        favorites = []
+        recents = []
+        defaults.removeObject(forKey: "favoriteAirports")
+        defaults.removeObject(forKey: "recentAirports")
+    }
+
     func noteConnected(_ icao: String) {
         recents.removeAll { $0 == icao }
         recents.insert(icao, at: 0)

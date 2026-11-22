@@ -115,6 +115,9 @@ final class PlacesTests: XCTestCase {
             places.noteConnected(icao)
         }
         XCTAssertEqual(places.recents, ["KSEA", "KDFW", "KATL", "KORD", "KBOS"])
+        places.toggleFavorite("KBOS")
+        places.clearAll()
+        XCTAssertTrue(places.favorites.isEmpty && places.recents.isEmpty)
     }
 
     func testSearchRanksCodesFirst() {
