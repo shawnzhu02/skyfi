@@ -197,7 +197,7 @@ struct GlobeView: UIViewRepresentable {
             for (icao, airport) in wanted {
                 if let existing = airportAnnotations[icao] {
                     if let view = map.view(for: existing) as? AirportAnnotationView {
-                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: !Catalog.feeds(at: icao).isEmpty)
+                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: Catalog.feed(at: icao) != nil)
                     }
                 } else {
                     let annotation = AirportAnnotation(airport)
@@ -233,7 +233,7 @@ struct GlobeView: UIViewRepresentable {
             if let airport = annotation as? AirportAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: AirportAnnotationView.reuseID, for: airport) as! AirportAnnotationView
                 view.configure(airport: airport.airport, tuned: airport.airport.icao == parent.tunedAirport,
-                               hasFeed: !Catalog.feeds(at: airport.airport.icao).isEmpty)
+                               hasFeed: Catalog.feed(at: airport.airport.icao) != nil)
                 return view
             }
             return nil

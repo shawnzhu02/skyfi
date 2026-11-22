@@ -2,151 +2,169 @@
  {
   "mount": "kbos_twr",
   "airport": "KBOS",
-  "name": "Boston Tower"
- },
- {
-  "mount": "kbos_app",
-  "airport": "KBOS",
-  "name": "Boston Approach"
+  "name": "Boston Tower",
+  "kind": "tower"
  },
  {
   "mount": "kjfk_twr",
   "airport": "KJFK",
-  "name": "New York JFK Tower"
- },
- {
-  "mount": "kjfk_app",
-  "airport": "KJFK",
-  "name": "New York Approach"
+  "name": "New York JFK Tower",
+  "kind": "tower"
  },
  {
   "mount": "klga_twr",
   "airport": "KLGA",
-  "name": "LaGuardia Tower"
+  "name": "LaGuardia Tower",
+  "kind": "tower"
  },
  {
   "mount": "kewr_twr",
   "airport": "KEWR",
-  "name": "Newark Tower"
+  "name": "Newark Tower",
+  "kind": "tower"
  },
  {
   "mount": "kphl_twr",
   "airport": "KPHL",
-  "name": "Philadelphia Tower"
+  "name": "Philadelphia Tower",
+  "kind": "tower"
  },
  {
   "mount": "kdca_twr",
   "airport": "KDCA",
-  "name": "Washington National Tower"
+  "name": "Washington National Tower",
+  "kind": "tower"
  },
  {
   "mount": "kiad_twr",
   "airport": "KIAD",
-  "name": "Washington Dulles Tower"
+  "name": "Washington Dulles Tower",
+  "kind": "tower"
  },
  {
   "mount": "katl_twr",
   "airport": "KATL",
-  "name": "Atlanta Tower"
+  "name": "Atlanta Tower",
+  "kind": "tower"
  },
  {
   "mount": "kclt_twr",
   "airport": "KCLT",
-  "name": "Charlotte Tower"
+  "name": "Charlotte Tower",
+  "kind": "tower"
  },
  {
   "mount": "kmco_twr",
   "airport": "KMCO",
-  "name": "Orlando Tower"
+  "name": "Orlando Tower",
+  "kind": "tower"
  },
  {
   "mount": "kmia_twr",
   "airport": "KMIA",
-  "name": "Miami Tower"
+  "name": "Miami Tower",
+  "kind": "tower"
  },
  {
   "mount": "kord_twr",
   "airport": "KORD",
-  "name": "Chicago O'Hare Tower"
+  "name": "Chicago O'Hare Tower",
+  "kind": "tower"
  },
  {
   "mount": "kdtw_twr",
   "airport": "KDTW",
-  "name": "Detroit Tower"
+  "name": "Detroit Tower",
+  "kind": "tower"
  },
  {
   "mount": "kmsp_twr",
   "airport": "KMSP",
-  "name": "Minneapolis Tower"
+  "name": "Minneapolis Tower",
+  "kind": "tower"
  },
  {
   "mount": "kdfw_twr",
   "airport": "KDFW",
-  "name": "Dallas/Fort Worth Tower"
+  "name": "Dallas/Fort Worth Tower",
+  "kind": "tower"
  },
  {
   "mount": "kiah_twr",
   "airport": "KIAH",
-  "name": "Houston Tower"
+  "name": "Houston Tower",
+  "kind": "tower"
  },
  {
   "mount": "kden_twr",
   "airport": "KDEN",
-  "name": "Denver Tower"
+  "name": "Denver Tower",
+  "kind": "tower"
  },
  {
   "mount": "kphx_twr",
   "airport": "KPHX",
-  "name": "Phoenix Tower"
+  "name": "Phoenix Tower",
+  "kind": "tower"
  },
  {
   "mount": "klas_twr",
   "airport": "KLAS",
-  "name": "Las Vegas Tower"
+  "name": "Las Vegas Tower",
+  "kind": "tower"
  },
  {
   "mount": "klax_twr",
   "airport": "KLAX",
-  "name": "Los Angeles Tower"
+  "name": "Los Angeles Tower",
+  "kind": "tower"
  },
  {
   "mount": "ksan_twr",
   "airport": "KSAN",
-  "name": "San Diego Tower"
+  "name": "San Diego Tower",
+  "kind": "tower"
  },
  {
   "mount": "ksfo_twr",
   "airport": "KSFO",
-  "name": "San Francisco Tower"
+  "name": "San Francisco Tower",
+  "kind": "tower"
  },
  {
   "mount": "kpdx_twr",
   "airport": "KPDX",
-  "name": "Portland Tower"
+  "name": "Portland Tower",
+  "kind": "tower"
  },
  {
   "mount": "ksea_twr",
   "airport": "KSEA",
-  "name": "Seattle Tower"
+  "name": "Seattle Tower",
+  "kind": "tower"
  },
  {
   "mount": "cyyz_twr",
   "airport": "CYYZ",
-  "name": "Toronto Tower"
+  "name": "Toronto Tower",
+  "kind": "tower"
  },
  {
   "mount": "egll_twr",
   "airport": "EGLL",
-  "name": "London Heathrow Tower"
+  "name": "London Heathrow Tower",
+  "kind": "tower"
  },
  {
   "mount": "eham_twr",
   "airport": "EHAM",
-  "name": "Amsterdam Tower"
+  "name": "Amsterdam Tower",
+  "kind": "tower"
  },
  {
   "mount": "rjtt_twr",
   "airport": "RJTT",
-  "name": "Tokyo Haneda Tower"
+  "name": "Tokyo Haneda Tower",
+  "kind": "tower"
  }
 ]

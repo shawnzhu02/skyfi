@@ -17,10 +17,26 @@ struct Preset: Codable, Identifiable, Hashable {
 }
 
 /// A LiveATC feed. `mount` is the LiveATC mount point (for example `kbos_twr`).
+/// Skyfi carries one feed per airport: the tower, or approach/departure where there's no tower feed.
 struct ATCFeed: Codable, Identifiable, Hashable {
+    enum Kind: String, Codable {
+        case tower
+        case approach
+        case departure
+
+        var rank: Int {
+            switch self {
+            case .tower: return 0
+            case .approach: return 1
+            case .departure: return 2
+            }
+        }
+    }
+
     let mount: String
     let airport: String
     let name: String
+    let kind: Kind
 
     var id: String { mount }
     var url: URL { URL(string: "http://d.liveatc.net/\(mount)")! }
@@ -29,7 +45,15 @@ struct ATCFeed: Codable, Identifiable, Hashable {
 /// Presets and feeds bundled with the app.
 enum Catalog {
     static let presets: [Preset] = load("presets")
-    static let feeds: [ATCFeed] = load("feeds")
+    /// One feed per airport, best kind first (tower, then approach, then departure).
+    static let feeds: [ATCFeed] = {
+        let all: [ATCFeed] = load("feeds")
+        var best: [String: ATCFeed] = [:]
+        for feed in all where feed.kind.rank < (best[feed.airport]?.kind.rank ?? .max) {
+            best[feed.airport] = feed
+        }
+        return all.filter { best[$0.airport] == $0 }
+    }()
 
     private static func load<T: Decodable>(_ name: String) -> [T] {
         guard let url = Bundle.main.url(forResource: name, withExtension: "json"),
@@ -38,8 +62,8 @@ enum Catalog {
         return items
     }
 
-    static func feeds(at icao: String) -> [ATCFeed] {
-        feeds.filter { $0.airport == icao }
+    static func feed(at icao: String) -> ATCFeed? {
+        feeds.first { $0.airport == icao }
     }
 
     struct NearbyFeed: Identifiable {
