@@ -47,6 +47,12 @@ struct AirportSheet: View {
                 WeatherSection(airport: airport, metar: weather.metar(airport.icao),
                                runways: atisRunways.isEmpty ? RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)) : nil)
                 ATISSection(broadcasts: broadcasts, runways: atisRunways)
+                if feeds.isEmpty {
+                    NearbyTowersSection(airport: airport) { other in
+                        mixer.connectViaLiveATC(other)
+                        onConnect()
+                    }
+                }
                 ForecastSection(taf: TAFStore.shared.taf(airport.icao))
                 FrequenciesSection(frequencies: FrequencyIndex.shared.frequencies(airport.icao))
 
@@ -516,5 +522,41 @@ struct ForecastSection: View {
             .padding(.vertical, 1)
             .background(WeatherSection.color(category).opacity(0.25), in: Capsule())
             .foregroundStyle(WeatherSection.color(category))
+    }
+}
+
+/// For an airport Skyfi has no feed for: the closest ones you can hear instead.
+struct NearbyTowersSection: View {
+    let airport: Airport
+    var onPick: (Airport) -> Void
+
+    var body: some View {
+        let nearby = Self.nearby(airport)
+        if !nearby.isEmpty {
+            Section("Nearby towers with a feed") {
+                ForEach(nearby, id: \.0.icao) { other, distance in
+                    Button { onPick(other) } label: {
+                        HStack {
+                            Text(other.code).font(Theme.mono(13, .bold)).foregroundStyle(Theme.cyan)
+                            Text(other.name).font(.system(size: 13)).foregroundStyle(Theme.text).lineLimit(1)
+                            Spacer()
+                            Text("\(Int(distance)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Up to three airports with Skyfi feeds within 150 nm, nearest first.
+    static func nearby(_ airport: Airport, index: AirportIndex = .shared) -> [(Airport, Double)] {
+        Catalog.connectable
+            .compactMap { index.airport(icao: $0) }
+            .filter { $0.icao != airport.icao }
+            .map { ($0, Geo.distanceNM(airport.lat, airport.lon, $0.lat, $0.lon)) }
+            .filter { $0.1 <= 150 }
+            .sorted { $0.1 < $1.1 }
+            .prefix(3)
+            .map { $0 }
     }
 }

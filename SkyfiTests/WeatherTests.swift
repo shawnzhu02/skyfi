@@ -435,3 +435,14 @@ final class NotableTests: XCTestCase {
         XCTAssertNil(plane(type: nil, flags: 0).notable)
     }
 }
+
+final class NearbyTowersTests: XCTestCase {
+    func testNearbyIsSortedAndExcludesItself() throws {
+        // Worcester (KORH) is near Boston and Providence.
+        let orh = try XCTUnwrap(AirportIndex.shared.airport(icao: "KORH") ?? AirportIndex.shared.airport(icao: "KMHT"))
+        let nearby = NearbyTowersSection.nearby(orh)
+        XCTAssertFalse(nearby.contains { $0.0.icao == orh.icao })
+        XCTAssertEqual(nearby.map(\.1), nearby.map(\.1).sorted())
+        XCTAssertLessThanOrEqual(nearby.count, 3)
+    }
+}

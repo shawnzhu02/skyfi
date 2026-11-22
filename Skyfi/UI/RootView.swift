@@ -18,6 +18,8 @@ struct RootView: View {
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
     @State private var resumeDismissed = false
+    /// Callsign of a plane picked from the worldwide search, shown while it loads.
+    @State private var pendingTitle: String?
 
     @State private var activeRunways: Set<String> = []
 
@@ -99,6 +101,28 @@ struct RootView: View {
                 if !seenTip, traffic.connected == nil, selectedPlane == nil {
                     FirstRunTip { seenTip = true }
                         .transition(.opacity)
+                }
+                if selectedPlane == nil, let id = selectedPlaneID {
+                    // Picked from the worldwide search: its area is loading.
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Finding \(pendingTitle ?? id.uppercased())…").font(.system(size: 13)).foregroundStyle(Theme.text)
+                        Spacer()
+                        Button { selectedPlaneID = nil } label: {
+                            Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
+                        }
+                        .accessibilityLabel("Cancel")
+                    }
+                    .padding(12)
+                    .panel()
+                    .task(id: id) {
+                        // Not in the feed after 20 s: give up quietly.
+                        try? await Task.sleep(for: .seconds(20))
+                        if !Task.isCancelled, selectedPlaneID == id, selectedPlane == nil {
+                            dlog("traffic", "\(id) not found after 20 s")
+                            selectedPlaneID = nil
+                        }
+                    }
                 }
                 if let plane = selectedPlane {
                     PlaneCard(plane: plane, following: $following, onAirport: { selectedAirport = $0 }) { selectedPlaneID = nil }
@@ -226,6 +250,7 @@ struct RootView: View {
         .sheet(isPresented: $showActivity) {
             ActivityList(events: traffic.events, planes: Array(traffic.planes.values), onPickPlane: { plane in
                 showActivity = false
+                pendingTitle = plane.title
                 selectedPlaneID = plane.id
                 focus = MapFocus(plane.coordinate)
             }) { event in
