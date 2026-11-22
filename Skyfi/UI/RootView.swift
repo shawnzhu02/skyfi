@@ -341,6 +341,9 @@ struct PlaneCard: View {
             if let line = [plane.operatorName, plane.typeName].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty {
                 Text(line).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
+            if let whereText = Self.position(plane, near: traffic.connected) {
+                Text(whereText).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
+            }
             if RootView.lostSignal(plane) {
                 Label("No signal for \(Int(Date().timeIntervalSince(plane.fixTime))) s", systemImage: "antenna.radiowaves.left.and.right.slash")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
@@ -396,6 +399,22 @@ struct PlaneCard: View {
                 route = await RouteLookup.shared.route(callsign: callsign, lat: plane.lat, lon: plane.lon)
             }
         }
+    }
+
+    /// "12 nm SW of BOS": from the connected airport, or the nearest one within 60 nm.
+    static func position(_ plane: Plane, near connected: Airport?) -> String? {
+        let airport = connected ?? AirportIndex.shared.nearest(lat: plane.lat, lon: plane.lon, withinNM: 60)
+        guard let airport else { return nil }
+        let distance = Geo.distanceNM(airport.lat, airport.lon, plane.lat, plane.lon)
+        if distance < 1 { return "At \(airport.code)" }
+        let bearing = Geo.bearing(airport.lat, airport.lon, plane.lat, plane.lon)
+        return "\(Int(distance.rounded())) nm \(compass(bearing)) of \(airport.code)"
+    }
+
+    static func compass(_ degrees: Double) -> String {
+        let points = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        let index = Int(((degrees.truncatingRemainder(dividingBy: 360) + 360 + 22.5) / 45).rounded(.down)) % 8
+        return points[index]
     }
 
     static func shareText(_ plane: Plane, near airport: Airport?) -> String {

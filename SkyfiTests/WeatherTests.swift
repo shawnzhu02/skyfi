@@ -406,3 +406,13 @@ final class LookupTests: XCTestCase {
         XCTAssertEqual(ADSBClient.Lookup.from("DAL 234/"), [])
     }
 }
+
+final class CompassTests: XCTestCase {
+    func testPoints() {
+        XCTAssertEqual(PlaneCard.compass(0), "N")
+        XCTAssertEqual(PlaneCard.compass(359), "N")
+        XCTAssertEqual(PlaneCard.compass(44), "NE")
+        XCTAssertEqual(PlaneCard.compass(225), "SW")
+        XCTAssertEqual(PlaneCard.compass(-90), "W")
+    }
+}
