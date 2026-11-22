@@ -111,6 +111,9 @@ struct AirportSheet: View {
                                             Text(type).font(Theme.mono(11)).foregroundStyle(Theme.muted)
                                         }
                                         Spacer()
+                                        if let minutes = EventDetector.minutesToLanding(plane, at: airport) {
+                                            Text("~\(minutes) min").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                                        }
                                         Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.amber)
                                     }
                                 }

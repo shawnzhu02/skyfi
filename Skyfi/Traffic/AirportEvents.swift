@@ -50,6 +50,14 @@ enum EventDetector {
     }
 
     /// Airborne, descending, within 30 nm and pointed at the airport.
+    /// Rough minutes to touchdown for a plane on approach: straight-line distance over ground speed,
+    /// plus a minute for the slowdown on final. nil when it isn't moving.
+    static func minutesToLanding(_ plane: Plane, at airport: Airport) -> Int? {
+        guard let speed = plane.groundSpeed, speed > 60 else { return nil }
+        let distance = Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon)
+        return max(1, Int((distance / speed * 60 + 1).rounded()))
+    }
+
     static func isApproaching(_ plane: Plane, to airport: Airport) -> Bool {
         guard !plane.onGround, let altitude = plane.altitude, let track = plane.track else { return false }
         let distance = Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon)

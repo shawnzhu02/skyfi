@@ -15,6 +15,7 @@ struct RootView: View {
     @State private var showActivity = false
     @State private var showTranscript = false
     @State private var browser = LiveATCBrowser.shared
+    @AppStorage("seenFirstRunTip") private var seenTip = false
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
@@ -30,6 +31,10 @@ struct RootView: View {
             VStack(spacing: 10) {
                 topBar
                 Spacer()
+                if !seenTip, traffic.connected == nil, selectedPlane == nil {
+                    FirstRunTip { seenTip = true }
+                        .transition(.opacity)
+                }
                 if let plane = selectedPlane {
                     PlaneCard(plane: plane) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -185,6 +190,11 @@ struct PlaneCard: View {
             if let route {
                 Text(route).font(Theme.mono(13)).foregroundStyle(Theme.amber)
             }
+            if let airport = traffic.connected, EventDetector.isApproaching(plane, to: airport),
+               let minutes = EventDetector.minutesToLanding(plane, at: airport) {
+                Text("Landing \(airport.code) in about \(minutes) min")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.cyan)
+            }
             HStack(spacing: 18) {
                 stat("ALT", Format.altitude(plane))
                 stat("SPD", Format.speed(plane.groundSpeed))
@@ -260,4 +270,37 @@ struct EventRow: View {
 
 extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+/// Shown until dismissed: how to get from the globe to tower audio.
+struct FirstRunTip: View {
+    var onDone: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Welcome to Skyfi").font(Theme.rounded(16, .bold)).foregroundStyle(Theme.amber)
+                Spacer()
+                Button(action: onDone) {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
+                }
+                .accessibilityLabel("Close tip")
+            }
+            step("1", "Tap a cyan airport, then Connect. Its planes show up within 60 nm.")
+            step("2", "LiveATC's player opens. Tap play on their page to hear the tower.")
+            step("3", "Pick lofi or paste a YouTube link in the mixer below. Minimize the player and enjoy.")
+            Button("Got it", action: onDone)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.cyan)
+        }
+        .padding(14)
+        .panel()
+    }
+
+    private func step(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number).font(Theme.mono(12, .bold)).foregroundStyle(Theme.cyan).frame(width: 16)
+            Text(text).font(.system(size: 13)).foregroundStyle(Theme.text)
+        }
+    }
 }
