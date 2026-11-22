@@ -9,6 +9,7 @@ struct AirportSheet: View {
     @Environment(Mixer.self) private var mixer
     @State private var places = Places.shared
     @State private var weather = WeatherStore.shared
+    @State private var atisStore = ATISStore.shared
 
     private var isConnected: Bool { mixer.airport == airport.icao }
 
@@ -38,8 +39,12 @@ struct AirportSheet: View {
                     .listRowBackground(Color.clear)
                 }
 
+                let broadcasts = atisStore.atis(airport.icao)
+                let atisRunways = ATIS.runways(in: broadcasts, airport: airport)
+                // The ATIS says which runways are in use; only guess when it doesn't.
                 WeatherSection(airport: airport, metar: weather.metar(airport.icao),
-                               runways: RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)))
+                               runways: atisRunways.isEmpty ? RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)) : nil)
+                ATISSection(broadcasts: broadcasts, runways: atisRunways)
 
                 Section {
                     if feeds.isEmpty, !mixer.towerInBrowser {
@@ -165,6 +170,7 @@ struct AirportSheet: View {
                 // Keeps the weather fresh while the card is open (the store caches 10 minutes).
                 while !Task.isCancelled {
                     await weather.refresh(airport.icao)
+                    await atisStore.refresh(airport.icao)
                     try? await Task.sleep(for: .seconds(120))
                 }
             }
@@ -273,6 +279,64 @@ struct WeatherSection: View {
         case .mvfr: return Color(red: 0.35, green: 0.6, blue: 1.0)
         case .ifr: return .red
         case .lifr: return Color(red: 0.85, green: 0.35, blue: 0.95)
+        }
+    }
+}
+
+/// The airport's ATIS: information letter, runways in use, and the full broadcast on tap.
+struct ATISSection: View {
+    let broadcasts: [ATIS]
+    let runways: ATIS.Runways
+    @State private var expanded = false
+
+    var body: some View {
+        if !broadcasts.isEmpty {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        ForEach(broadcasts, id: \.kind) { atis in
+                            Text(label(atis))
+                                .font(Theme.mono(11, .bold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Theme.cyan.opacity(0.2), in: Capsule())
+                                .foregroundStyle(Theme.cyan)
+                        }
+                        Spacer()
+                        if let updated = broadcasts.compactMap(\.updated).max() {
+                            Text(Format.ago(updated)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                    if !runways.landing.isEmpty {
+                        Text("Landing \(runways.landing.joined(separator: ", "))")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    }
+                    if !runways.departing.isEmpty {
+                        Text("Departing \(runways.departing.joined(separator: ", "))")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    }
+                    if expanded {
+                        ForEach(broadcasts, id: \.kind) { atis in
+                            Text(atis.text).font(Theme.mono(11, .regular)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                        }
+                    } else {
+                        Text("Tap for the full broadcast").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { expanded.toggle() }
+            } header: {
+                Text("ATIS")
+            }
+        }
+    }
+
+    private func label(_ atis: ATIS) -> String {
+        let code = atis.code.isEmpty ? "" : " \(atis.code)"
+        switch atis.kind {
+        case .combined: return "INFO\(code)"
+        case .arrival: return "ARR\(code)"
+        case .departure: return "DEP\(code)"
         }
     }
 }

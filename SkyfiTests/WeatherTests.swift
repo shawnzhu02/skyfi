@@ -200,3 +200,37 @@ final class EmergencyTests: XCTestCase {
         XCTAssertNil(plane(nil).emergency)
     }
 }
+
+final class ATISTests: XCTestCase {
+    private var boston: Airport { AirportIndex.shared.airport(icao: "KBOS")! }
+
+    /// Real atis.info output for Boston (2026-11-22).
+    private let sample = #"""
+    [{"airport":"KBOS","type":"combined","code":"O","datis":"BOS ATIS INFO O 0754Z. 00000KT 7SM BCFG BKN250 08/07 A3028 (THREE ZERO TWO EIGHT). RNAV X 33L, DEP 15R. RY 33L ILS OTS. READBACK ALL HOLD SHORT INSTRCNS AND ASSIGNED ALTITUDES. INCREASED BIRD ACTIVITY IN THE VICINITY OF LOGAN AIRPORT. ...ADVS YOU HAVE INFO O.","time":"0754","updatedAt":"2026-11-22T08:32:25.2719594Z"}]
+    """#
+
+    func testParsesAndFindsRunways() throws {
+        let broadcasts = ATIS.parse(Data(sample.utf8))
+        XCTAssertEqual(broadcasts.count, 1)
+        let atis = try XCTUnwrap(broadcasts.first)
+        XCTAssertEqual(atis.code, "O")
+        XCTAssertEqual(atis.kind, .combined)
+        XCTAssertNotNil(atis.updated)
+        XCTAssertEqual(ATIS.runways(in: broadcasts, airport: boston), ATIS.Runways(landing: ["33L"], departing: ["15R"]))
+    }
+
+    func testSplitArrivalAndDepartureBroadcasts() {
+        let broadcasts = [
+            ATIS(airport: "KBOS", kind: .arrival, code: "K", text: "BOS ARR INFO K. ILS RY 4R APCH IN USE, VISUAL APCH RWY 4L. RWY 9 CLSD.", updated: nil),
+            ATIS(airport: "KBOS", kind: .departure, code: "L", text: "BOS DEP INFO L. DEPG RWYS 4R, 9. TEMP 08/07.", updated: nil),
+        ]
+        let runways = ATIS.runways(in: broadcasts, airport: boston)
+        XCTAssertEqual(runways.landing, ["04R", "04L"])
+        XCTAssertEqual(runways.departing, ["04R", "09"])
+    }
+
+    func testNoRunwaysFromWeatherNumbers() {
+        let broadcasts = [ATIS(airport: "KBOS", kind: .combined, code: "A", text: "BOS ATIS INFO A. 27012KT 10SM FEW040 22/04 A3001.", updated: nil)]
+        XCTAssertTrue(ATIS.runways(in: broadcasts, airport: boston).isEmpty)
+    }
+}
