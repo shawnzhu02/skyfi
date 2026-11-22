@@ -30,6 +30,9 @@ final class LiveATCBrowser {
     private(set) var pageURL: URL?
     /// Set by Skyfi's pause button; the page's own play button can't start audio until it's lifted.
     private(set) var suspended = false
+    /// The Cloudflare "checking your browser" page has been up for a while.
+    private(set) var stuckOnCheck = false
+    @ObservationIgnored private var checkTask: Task<Void, Never>?
 
     @ObservationIgnored let webView: WKWebView
     @ObservationIgnored private let helper = BrowserHelper()
@@ -58,7 +61,7 @@ final class LiveATCBrowser {
         observations = [
             webView.observe(\.title, options: [.new]) { [weak self] view, _ in
                 let title = view.title ?? ""
-                Task { @MainActor in self?.title = title }
+                Task { @MainActor in self?.titleChanged(title) }
             },
             webView.observe(\.isLoading, options: [.new]) { [weak self] view, _ in
                 let loading = view.isLoading
@@ -139,6 +142,8 @@ final class LiveATCBrowser {
         dlog("web", "close")
         pollTask?.cancel()
         pollTask = nil
+        checkTask?.cancel()
+        stuckOnCheck = false
         webView.pauseAllMediaPlayback(completionHandler: nil)
         if suspended { webView.setAllMediaPlaybackSuspended(false, completionHandler: nil) }
         webView.load(URLRequest(url: URL(string: "about:blank")!))
@@ -187,6 +192,24 @@ final class LiveATCBrowser {
     }
 
     // MARK: Page events
+
+    private func titleChanged(_ title: String) {
+        self.title = title
+        let checking = title.localizedCaseInsensitiveContains("just a moment")
+            || title.localizedCaseInsensitiveContains("attention required")
+        checkTask?.cancel()
+        guard checking else {
+            stuckOnCheck = false
+            return
+        }
+        // Give the check 20 s to finish by itself before offering Safari.
+        checkTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(20))
+            guard let self, !Task.isCancelled else { return }
+            self.stuckOnCheck = true
+            dlog("web", "still on the browser check after 20 s")
+        }
+    }
 
     private func urlChanged(_ url: URL?) {
         pageURL = url
@@ -368,6 +391,18 @@ struct LiveATCPanel: View {
                         else if drag.translation.height > 120 || (drag.translation.height > 40 && !tall) { browser.minimize() }
                         else if drag.translation.height > 40 { tall = false }
                     })
+                if let problem = problem {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.amber)
+                        Text(problem).font(.system(size: 12)).foregroundStyle(Theme.text)
+                        Spacer(minLength: 4)
+                        Button("Open in Safari") { openInSafari() }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Theme.cyan)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                }
                 LiveATCWebView()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 8)
@@ -409,14 +444,26 @@ struct LiveATCPanel: View {
                 .opacity(browser.canGoBack ? 1 : 0.35)
             iconButton("arrow.clockwise", label: "Reload") { browser.reload() }
             iconButton("list.bullet", label: "All feeds at this airport") { browser.showAllFeeds() }
-            iconButton("safari", label: "Open in Safari") {
-                let page = browser.pageURL.flatMap { LiveATCBrowser.isLiveATC($0) ? $0 : nil }
-                if let url = page ?? browser.feed.map(LiveATCBrowser.playerURL(for:)) { openURL(url) }
-            }
+            iconButton("safari", label: "Open in Safari") { openInSafari() }
             iconButton("xmark", label: "Stop tower") { mixer.stopTower() }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+
+    /// Why the page might not be working, with Safari as the way out.
+    private var problem: String? {
+        if case .failed(let message) = browser.media { return message }
+        if browser.stuckOnCheck { return "Still on LiveATC's browser check." }
+        return nil
+    }
+
+    private func openInSafari() {
+        let page = browser.pageURL.flatMap { LiveATCBrowser.isLiveATC($0) ? $0 : nil }
+        if let url = page ?? browser.feed.map(LiveATCBrowser.playerURL(for:)) {
+            dlog("web", "opened in Safari")
+            openURL(url)
+        }
     }
 
     private func iconButton(_ name: String, label: String, action: @escaping () -> Void) -> some View {
