@@ -60,6 +60,8 @@ final class Mixer {
     @ObservationIgnored private var duckTask: Task<Void, Never>?
     @ObservationIgnored private var retryCount: [ObjectIdentifier: Int] = [:]
     @ObservationIgnored private var chain: FeedChain?
+    /// Set by pause(): nothing may start playing again on its own until resume().
+    @ObservationIgnored private var userPaused = false
     @ObservationIgnored private var backgroundTasks: [ObjectIdentifier: UIBackgroundTaskIdentifier] = [:]
 
     private init() {
@@ -166,6 +168,7 @@ final class Mixer {
         }
         guard request == musicRequest else { return }
         musicPlayer.play()
+        watchdog(isMusic: true)
     }
 
     func stopMusic() {
@@ -188,6 +191,7 @@ final class Mixer {
         if self.airport == airport.icao, !isFailed(atcStatus) { return }
         cancelRetry(isMusic: false)
         retryCount[ObjectIdentifier(atcPlayer)] = 0
+        userPaused = false
         self.airport = airport.icao
         chain = FeedChain(airport: airport.icao, candidates: candidates)
         startATC(candidates[0])
@@ -220,19 +224,35 @@ final class Mixer {
         let outcome = chain.failed()
         self.chain = chain
         guard let next = chain.current else { return }
+        if userPaused {
+            // Paused: remember which feed is next, start it on resume().
+            feed = next
+            dropATCItem()
+            return
+        }
         switch outcome {
         case .next:
             // That mount is offline: move straight on to the airport's next feed.
             startATC(next)
         case .retrySame:
-            if atcStatus == .loading { atcStatus = .failed("Feed dropped · reconnecting") }
+            // Drop the dead item so a late start or a second failure event can't act on it.
+            dropATCItem()
+            atcStatus = .failed("Feed dropped · reconnecting")
+            updateNowPlaying()
             scheduleRetry(isMusic: false)
         case .exhausted:
+            dropATCItem()
             feed = next
             atcStatus = .failed("No live feed at \(chain.airport) right now · retrying")
             updateNowPlaying()
             scheduleRetry(isMusic: false)
         }
+    }
+
+    /// Stops the tower item without telling anyone it changed: the next one is coming.
+    private func dropATCItem() {
+        watchdogs["atc"]?.cancel()
+        atcPlayer.replaceCurrentItem(with: nil)
     }
 
     // MARK: Transport
@@ -242,6 +262,7 @@ final class Mixer {
     }
 
     func pause() {
+        userPaused = true
         musicPlayer.pause()
         atcPlayer.pause()
         onPause?()
@@ -251,6 +272,7 @@ final class Mixer {
     }
 
     func resume() {
+        userPaused = false
         activateSession()
         if let music {
             musicStatus = .loading
@@ -333,16 +355,18 @@ final class Mixer {
                 MainActor.assumeIsolated { self?.handleItemProblem(item, ended: ended) }
             })
         }
-        statusObservers.append(musicPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
-            let failed = player.currentItem?.status == .failed
-            Task { @MainActor in self?.syncStatus(isMusic: true, status, failed: failed) }
-        })
-        statusObservers.append(atcPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
-            let status = player.timeControlStatus
-            let failed = player.currentItem?.status == .failed
-            Task { @MainActor in self?.syncStatus(isMusic: false, status, failed: failed) }
-        })
+        for (player, isMusic) in [(musicPlayer, true), (atcPlayer, false)] {
+            statusObservers.append(player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+                let status = player.timeControlStatus
+                let item = player.currentItem
+                let failed = item?.status == .failed
+                Task { @MainActor in
+                    // A report about an item that's since been replaced is stale.
+                    guard let self, item === (isMusic ? self.musicPlayer : self.atcPlayer).currentItem else { return }
+                    self.syncStatus(isMusic: isMusic, status, failed: failed)
+                }
+            })
+        }
         // An item that fails while loading never stalls, so it needs its own retry trigger.
         for player in [musicPlayer, atcPlayer] {
             statusObservers.append(player.observe(\.currentItem?.status, options: [.new]) { [weak self] player, _ in
@@ -361,6 +385,7 @@ final class Mixer {
         case .playing:
             next = .playing
             retryCount[ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)] = 0
+            cancelRetry(isMusic: isMusic)
             if !isMusic { chain?.markPlayed() }
         case .waitingToPlayAtSpecifiedRate: next = .loading
         case .paused:
@@ -436,12 +461,12 @@ final class Mixer {
         }
         retryTask[key] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard let self else { return }
+            guard let self, !Task.isCancelled else { return }
+            self.retryTask[key] = nil
             defer {
-                self.retryTask[key] = nil
-                self.endBackgroundTask(key)
+                if self.retryTask[key] == nil { self.endBackgroundTask(key) }
             }
-            guard !Task.isCancelled else { return }
+            if self.userPaused { return }
             if isMusic, self.music != nil, self.musicStatus != .paused {
                 if self.musicPlayer.currentItem?.status == .failed || self.music?.isLive == true {
                     await self.reconnectMusic()

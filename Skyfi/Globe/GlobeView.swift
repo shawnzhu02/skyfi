@@ -66,7 +66,9 @@ struct GlobeView: UIViewRepresentable {
         }
         if let focus {
             if let span = focus.spanDegrees {
-                let region = MKCoordinateRegion(center: focus.center, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span))
+                // A degree of longitude shrinks with latitude: widen it so the view is `span` tall AND wide.
+                let lonSpan = min(span / max(cos(focus.center.latitude * .pi / 180), 0.2), 360)
+                let region = MKCoordinateRegion(center: focus.center, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: lonSpan))
                 map.setRegion(map.regionThatFits(region), animated: true)
             } else {
                 map.setCenter(focus.center, animated: true)

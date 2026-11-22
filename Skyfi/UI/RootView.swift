@@ -49,7 +49,8 @@ struct RootView: View {
             let airport = icao.flatMap { AirportIndex.shared.airport(icao: $0) }
             traffic.connect(airport)
             selectedPlaneID = nil
-            if let airport { focus = MapFocus(airport.coordinate, spanDegrees: 2.2) }
+            // The ring is 120 nm (2° of latitude) across; leave room for the top bar and the mixer.
+            if let airport { focus = MapFocus(airport.coordinate, spanDegrees: 2.9) }
         }
         .sheet(item: $selectedAirport) { airport in
             AirportSheet(airport: airport, onConnect: { selectedAirport = nil }) { plane in

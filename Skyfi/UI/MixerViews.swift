@@ -104,31 +104,7 @@ struct MixerSheet: View {
                     }
                 }
 
-                Section("Airport") {
-                    if let feed = mixer.feed {
-                        nowPlaying(title: feed.name, subtitle: "LiveATC · \(feed.airport)", status: mixer.atcStatus,
-                                   tint: Theme.cyan, onStop: mixer.disconnect)
-                        slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
-                    }
-                    ForEach(Catalog.airports(near: center).prefix(12)) { item in
-                        Button { mixer.connect(item.airport) } label: {
-                            HStack {
-                                Image(systemName: mixer.airport == item.airport.icao ? "headphones.circle.fill" : "headphones")
-                                    .foregroundStyle(Theme.cyan)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(item.airport.code).font(Theme.mono(14, .bold)).foregroundStyle(Theme.text)
-                                    Text(item.airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
-                                }
-                                Spacer()
-                                Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                            }
-                        }
-                    }
-                } footer: {
-                    NavigationLink("Check feeds (debug)") { FeedCheckView() }
-                        .font(.system(size: 12))
-                }
+                airportSection
 
                 if mixer.music != nil && mixer.feed != nil {
                     Section("Mix") {
@@ -147,6 +123,42 @@ struct MixerSheet: View {
             .scrollContentBackground(.hidden)
             .navigationTitle("Mixer")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    /// Split out of `body`: one big expression is too slow for the type checker.
+    @ViewBuilder private var airportSection: some View {
+        @Bindable var mixer = mixer
+        Section {
+            if let feed = mixer.feed {
+                nowPlaying(title: feed.name, subtitle: "LiveATC · \(feed.airport)", status: mixer.atcStatus,
+                           tint: Theme.cyan, onStop: mixer.disconnect)
+                slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
+            }
+            ForEach(Catalog.airports(near: center).prefix(12)) { item in
+                airportRow(item)
+            }
+        } header: {
+            Text("Airport")
+        } footer: {
+            NavigationLink("Check feeds (debug)") { FeedCheckView() }
+                .font(.system(size: 12))
+        }
+    }
+
+    private func airportRow(_ item: Catalog.NearbyAirport) -> some View {
+        Button { mixer.connect(item.airport) } label: {
+            HStack {
+                Image(systemName: mixer.airport == item.airport.icao ? "headphones.circle.fill" : "headphones")
+                    .foregroundStyle(Theme.cyan)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.airport.code).font(Theme.mono(14, .bold)).foregroundStyle(Theme.text)
+                    Text(item.airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                }
+                Spacer()
+                Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+            }
         }
     }
 
