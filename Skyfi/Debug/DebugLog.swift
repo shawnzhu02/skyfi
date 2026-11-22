@@ -64,7 +64,10 @@ final class DebugLog {
 
     /// The whole report: device and app details, this launch, then the previous launch.
     var report: String {
-        var lines = [Self.header(), "", "== This launch"]
+        let browser = LiveATCBrowser.shared
+        let mixer = Mixer.shared
+        let state = "Now: airport \(mixer.airport ?? "none") · feed \(mixer.feed?.mount ?? "none") · tower in LiveATC player \(mixer.towerInBrowser) · page \(browser.isOpen ? "open" : "closed") \(browser.media) \(browser.suspended ? "suspended" : "")"
+        var lines = [Self.header(), state, "", "== This launch"]
         lines += entries.map(Self.format)
         if !previous.isEmpty {
             lines += ["", "== Previous launch", previous]

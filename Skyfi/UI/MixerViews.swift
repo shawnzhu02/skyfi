@@ -236,6 +236,8 @@ struct MixerSheet: View {
         Button {
             query = ""
             mixer.connect(airport)
+            // The LiveATC player opens behind this sheet: get out of its way.
+            if mixer.towerInBrowser { dismiss() }
         } label: {
             HStack {
                 Image(systemName: mixer.airport == airport.icao ? "headphones.circle.fill" : "headphones")
