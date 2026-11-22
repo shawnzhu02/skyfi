@@ -126,9 +126,10 @@ struct AirportSheet: View {
                 if isConnected {
                     if !approaching.isEmpty {
                         Section("On approach") {
-                            ForEach(approaching) { plane in
+                            // Nearest first: roughly the landing order.
+                            ForEach(Array(approaching.enumerated()), id: \.element.id) { number, plane in
                                 Button { onPickPlane(plane) } label: {
-                                    ApproachRow(plane: plane, airport: airport)
+                                    ApproachRow(plane: plane, airport: airport, sequence: number + 1)
                                 }
                             }
                         }
@@ -357,10 +358,14 @@ struct ATISSection: View {
 struct ApproachRow: View {
     let plane: Plane
     let airport: Airport
+    var sequence: Int?
     @State private var route: String?
 
     var body: some View {
         HStack {
+            if let sequence {
+                Text("#\(sequence)").font(Theme.mono(11, .bold)).foregroundStyle(Theme.muted).frame(width: 26, alignment: .leading)
+            }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
