@@ -19,6 +19,15 @@ final class BrowserTests: XCTestCase {
         XCTAssertEqual(feed.kind, .tower)
     }
 
+    func testOnlyLiveATCHostsStayInThePanel() throws {
+        for good in ["https://www.liveatc.net/search/?icao=kbos", "https://liveatc.net/", "https://s1-bos.liveatc.net/x"] {
+            XCTAssertTrue(LiveATCBrowser.isLiveATC(try XCTUnwrap(URL(string: good))), good)
+        }
+        for bad in ["http://www.liveatc.net/", "https://notliveatc.net/", "https://evil.com/liveatc.net", "https://liveatc.net.evil.com/"] {
+            XCTAssertFalse(LiveATCBrowser.isLiveATC(try XCTUnwrap(URL(string: bad))), bad)
+        }
+    }
+
     func testNonPlayerPagesAreIgnored() throws {
         XCTAssertNil(LiveATCBrowser.feed(fromPlayerURL: try XCTUnwrap(URL(string: "https://www.liveatc.net/search/?icao=kbos"))))
         XCTAssertNil(LiveATCBrowser.feed(fromPlayerURL: try XCTUnwrap(URL(string: "https://example.com/hlisten.php?mount=kbos_twr"))))

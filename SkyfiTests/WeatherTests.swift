@@ -1,0 +1,127 @@
+import XCTest
+@testable import Skyfi
+
+final class WeatherTests: XCTestCase {
+    /// Real aviationweather.gov output (2026-11-22): calm Boston, foggy JFK.
+    private let sample = #"""
+    [{"icaoId":"KBOS","obsTime":1795334040,"temp":8.3,"dewp":7.2,"wdir":0,"wspd":0,"visib":7,"altim":1025.5,"wxString":"BCFG",
+      "rawOb":"METAR KBOS 220754Z 00000KT 7SM BCFG BKN250 08/07 A3028","clouds":[{"cover":"BKN","base":25000}],"fltCat":"VFR"},
+     {"icaoId":"KJFK","obsTime":1795333860,"temp":11.7,"dewp":11.7,"wdir":40,"wspd":5,"visib":0.25,"altim":1024.1,"wxString":"FG",
+      "rawOb":"SPECI KJFK 220751Z 04005KT 1/4SM FG VV002 12/12 A3024","clouds":[{"cover":"OVX","base":200}],"fltCat":"LIFR"},
+     {"icaoId":"KXYZ","wdir":"VRB","wspd":3,"visib":"10+","clouds":[{"cover":"FEW","base":4000},{"cover":"OVC","base":2500}]}]
+    """#
+
+    func testParsesRealReports() throws {
+        let reports = METAR.parse(Data(sample.utf8))
+        XCTAssertEqual(reports.count, 3)
+
+        let bos = reports[0]
+        XCTAssertEqual(bos.station, "KBOS")
+        XCTAssertEqual(bos.windText, "Calm")
+        XCTAssertNil(bos.windDirection)
+        XCTAssertEqual(bos.ceilingFeet, 25000)
+        XCTAssertEqual(bos.category, .vfr)
+        XCTAssertEqual(try XCTUnwrap(bos.altimeterInHg), 30.28, accuracy: 0.01)
+        XCTAssertEqual(bos.weather, "BCFG")
+
+        let jfk = reports[1]
+        XCTAssertEqual(jfk.windDirection, 40)
+        XCTAssertEqual(jfk.windText, "040° 5 kt")
+        XCTAssertEqual(jfk.ceilingFeet, 200)
+        XCTAssertEqual(jfk.category, .lifr)
+        XCTAssertEqual(jfk.visibilityText, "0.25 mi")
+
+        let xyz = reports[2]
+        XCTAssertTrue(xyz.windVariable)
+        XCTAssertEqual(xyz.windText, "Variable 3 kt")
+        XCTAssertEqual(xyz.visibilityMiles, 10)
+        XCTAssertTrue(xyz.visibilityPlus)
+        XCTAssertEqual(xyz.ceilingFeet, 2500)
+        XCTAssertEqual(xyz.category, .mvfr, "no fltCat: worked out from the 2,500 ft ceiling")
+    }
+
+    func testFlightCategoryRules() {
+        XCTAssertEqual(FlightCategory.from(ceiling: nil, visibility: 10), .vfr)
+        XCTAssertEqual(FlightCategory.from(ceiling: 3000, visibility: 10), .mvfr)
+        XCTAssertEqual(FlightCategory.from(ceiling: 900, visibility: 10), .ifr)
+        XCTAssertEqual(FlightCategory.from(ceiling: nil, visibility: 2), .ifr)
+        XCTAssertEqual(FlightCategory.from(ceiling: 400, visibility: 10), .lifr)
+        XCTAssertEqual(FlightCategory.from(ceiling: nil, visibility: 0.5), .lifr)
+    }
+
+    func testBadJSONGivesNothing() {
+        XCTAssertTrue(METAR.parse(Data("not json".utf8)).isEmpty)
+        XCTAssertTrue(METAR.parse(Data("{}".utf8)).isEmpty)
+    }
+
+    // MARK: Runway guess
+
+    private var boston: Airport { AirportIndex.shared.airport(icao: "KBOS")! }
+
+    private func metar(wind: Int?, speed: Int) -> METAR {
+        METAR(station: "KBOS", raw: "", observed: nil, windDirection: wind, windVariable: false, windSpeed: speed, gust: nil,
+              visibilityMiles: 10, visibilityPlus: false, ceilingFeet: nil, temperatureC: nil, dewpointC: nil,
+              altimeterInHg: nil, weather: nil, category: .vfr)
+    }
+
+    private func event(_ runway: String?, minutesAgo: Double, now: Date) -> AirportEvent {
+        AirportEvent(kind: .arrival, planeID: UUID().uuidString, callsign: "DAL1", type: nil, airport: "KBOS",
+                     airportCode: "BOS", runway: runway, time: now.addingTimeInterval(-minutesAgo * 60))
+    }
+
+    func testRecentTrafficBeatsWind() {
+        let now = Date()
+        let events = [event("27", minutesAgo: 3, now: now), event("27", minutesAgo: 8, now: now),
+                      event("22L", minutesAgo: 5, now: now), event("04R", minutesAgo: 90, now: now)]
+        let guess = RunwayGuess.guess(airport: boston, events: events, metar: metar(wind: 40, speed: 15), now: now)
+        XCTAssertEqual(guess, RunwayGuess.Result(runways: ["27", "22L"], fromTraffic: true))
+    }
+
+    func testWindPicksParallelRunwaysIntoTheWind() {
+        // Wind from 210 at 14: the 22s (true heading 200) are the best into-wind ends.
+        let guess = RunwayGuess.guess(airport: boston, events: [], metar: metar(wind: 210, speed: 14))
+        XCTAssertEqual(guess, RunwayGuess.Result(runways: ["22L", "22R"], fromTraffic: false))
+    }
+
+    func testLightWindGivesNoGuess() {
+        XCTAssertNil(RunwayGuess.guess(airport: boston, events: [], metar: metar(wind: 210, speed: 3)))
+        XCTAssertNil(RunwayGuess.guess(airport: boston, events: [], metar: nil))
+    }
+}
+
+@MainActor
+final class PlacesTests: XCTestCase {
+    private func freshDefaults() -> UserDefaults {
+        let name = "skyfi-tests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    func testFavoritesToggleAndPersist() {
+        let defaults = freshDefaults()
+        let places = Places(defaults: defaults)
+        places.toggleFavorite("KBOS")
+        places.toggleFavorite("KJFK")
+        XCTAssertTrue(places.isFavorite("KBOS"))
+        places.toggleFavorite("KBOS")
+        XCTAssertFalse(places.isFavorite("KBOS"))
+        XCTAssertEqual(Places(defaults: defaults).favorites, ["KJFK"])
+    }
+
+    func testRecentsNewestFirstNoDuplicatesCapped() {
+        let places = Places(defaults: freshDefaults())
+        for icao in ["KBOS", "KJFK", "KLGA", "KBOS", "KORD", "KATL", "KDFW", "KSEA"] {
+            places.noteConnected(icao)
+        }
+        XCTAssertEqual(places.recents, ["KSEA", "KDFW", "KATL", "KORD", "KBOS"])
+    }
+
+    func testSearchRanksCodesFirst() {
+        XCTAssertEqual(Catalog.search("bos").first?.icao, "KBOS")
+        XCTAssertEqual(Catalog.search("KJFK").first?.icao, "KJFK")
+        XCTAssertTrue(Catalog.search("boston").contains { $0.icao == "KBOS" })
+        XCTAssertTrue(Catalog.search("  ").isEmpty)
+        XCTAssertTrue(Catalog.search("zzzzqq").isEmpty)
+    }
+}

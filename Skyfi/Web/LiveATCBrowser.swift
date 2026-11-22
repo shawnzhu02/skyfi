@@ -89,10 +89,9 @@ final class LiveATCBrowser {
         startPolling()
     }
 
+    /// Shows the panel. A Skyfi pause stays in place: Skyfi's play button lifts it.
     func expand() {
         expanded = true
-        // You're about to use the page: let its play button work again.
-        if suspended { setSuspended(false) }
     }
 
     func minimize() {
@@ -156,9 +155,15 @@ final class LiveATCBrowser {
         URL(string: "https://www.liveatc.net/search/?icao=\(icao.lowercased())")!
     }
 
+    /// An https page on liveatc.net or one of its subdomains.
+    nonisolated static func isLiveATC(_ url: URL) -> Bool {
+        guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
+        return host == "liveatc.net" || host.hasSuffix(".liveatc.net")
+    }
+
     /// The feed a LiveATC player URL plays, if it's one (hlisten.php?mount=kbos_twr&icao=kbos).
     nonisolated static func feed(fromPlayerURL url: URL) -> ATCFeed? {
-        guard url.host?.hasSuffix("liveatc.net") == true, url.path.hasSuffix("hlisten.php"),
+        guard isLiveATC(url), url.path.hasSuffix("hlisten.php"),
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
               let mount = items.first(where: { $0.name == "mount" })?.value, !mount.isEmpty else { return nil }
         if let known = Catalog.feeds.first(where: { $0.mount == mount }) { return known }
@@ -224,6 +229,8 @@ final class LiveATCBrowser {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self, !Task.isCancelled, self.isOpen else { return }
                 let state = await self.webView.requestMediaPlaybackState()
+                // A Skyfi pause may still be landing; don't flip back to playing meanwhile.
+                guard !self.suspended else { continue }
                 switch state {
                 case .playing:
                     self.setMedia(.playing)
@@ -270,6 +277,16 @@ private final class BrowserHelper: NSObject, WKNavigationDelegate, WKUIDelegate,
         owner?.handleMedia(type: type, detail: body["detail"] as? String ?? "", host: body["host"] as? String ?? "")
     }
 
+    /// The panel only shows LiveATC: other top-level links (ads, social) open in Safari instead.
+    /// Frames inside a LiveATC page (Cloudflare's check, the player) load as usual.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+        guard navigationAction.targetFrame?.isMainFrame != false, let url = navigationAction.request.url else { return .allow }
+        if url.absoluteString == "about:blank" || LiveATCBrowser.isLiveATC(url) { return .allow }
+        dlog("web", "outside link sent to Safari: \(url.host ?? url.scheme ?? "?")")
+        if url.scheme == "https" || url.scheme == "http" { await UIApplication.shared.open(url) }
+        return .cancel
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
         if let http = navigationResponse.response as? HTTPURLResponse {
             owner?.pageResponse(status: http.statusCode, url: http.url?.absoluteString ?? "?",
@@ -293,6 +310,7 @@ private final class BrowserHelper: NSObject, WKNavigationDelegate, WKUIDelegate,
     /// LiveATC opens players in pop-up windows: load them in the same view instead.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        // The navigation policy above still vets the URL.
         if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
         return nil
     }
@@ -340,17 +358,21 @@ struct LiveATCPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(browser.feed?.name ?? "LiveATC")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                Text(LiveATCMiniBar.status(browser.media, loading: browser.isLoading))
+                Text(LiveATCMiniBar.status(browser))
                     .font(.system(size: 11)).foregroundStyle(Theme.cyan).lineLimit(1)
             }
             Spacer(minLength: 4)
+            if browser.suspended {
+                iconButton("play.fill", label: "Resume") { mixer.resume() }
+            }
             iconButton("chevron.backward", label: "Back") { browser.goBack() }
                 .disabled(!browser.canGoBack)
                 .opacity(browser.canGoBack ? 1 : 0.35)
             iconButton("arrow.clockwise", label: "Reload") { browser.reload() }
             iconButton("list.bullet", label: "All feeds at this airport") { browser.showAllFeeds() }
             iconButton("safari", label: "Open in Safari") {
-                if let url = browser.pageURL ?? browser.feed.map(LiveATCBrowser.playerURL(for:)) { openURL(url) }
+                let page = browser.pageURL.flatMap { LiveATCBrowser.isLiveATC($0) ? $0 : nil }
+                if let url = page ?? browser.feed.map(LiveATCBrowser.playerURL(for:)) { openURL(url) }
             }
             iconButton("xmark", label: "Stop tower") { mixer.stopTower() }
         }
@@ -387,7 +409,7 @@ struct LiveATCMiniBar: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(browser.feed?.name ?? "LiveATC")
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                        Text(Self.status(browser.media, loading: browser.isLoading))
+                        Text(Self.status(browser))
                             .font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -415,5 +437,9 @@ struct LiveATCMiniBar: View {
         case .failed(let message): return message
         case .none: return loading ? "Opening LiveATC…" : "Tap play on the page to listen"
         }
+    }
+
+    static func status(_ browser: LiveATCBrowser) -> String {
+        browser.suspended ? "Paused in Skyfi" : status(browser.media, loading: browser.isLoading)
     }
 }

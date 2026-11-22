@@ -47,10 +47,11 @@ final class Mixer {
             guard towerInBrowser != oldValue else { return }
             UserDefaults.standard.set(towerInBrowser, forKey: "towerInBrowser")
             dlog("atc", "tower in LiveATC player: \(towerInBrowser)")
-            if let icao = airport, let airport = AirportIndex.shared.airport(icao: icao) {
-                disconnect()
-                connect(airport)
-            }
+            // Reconnect in the new mode, but only restart the tower if it was on.
+            guard let icao = airport else { return }
+            let towerWasOn = feed != nil
+            disconnect()
+            if towerWasOn, let airport = AirportIndex.shared.airport(icao: icao) { connect(airport) }
         }
     }
 
@@ -212,6 +213,7 @@ final class Mixer {
     func connect(_ airport: Airport) {
         let candidates = Catalog.feeds(at: airport.icao)
         guard !candidates.isEmpty else { return }
+        Places.shared.noteConnected(airport.icao)
         if towerInBrowser {
             connectInBrowser(airport, candidates: candidates)
             return
@@ -269,6 +271,12 @@ final class Mixer {
     func browserFeedChanged(_ feed: ATCFeed) {
         guard towerInBrowser, airport != nil else { return }
         self.feed = feed
+        // You picked another airport's feed on the page: follow it, so the map shows its planes.
+        if feed.airport != airport, AirportIndex.shared.airport(icao: feed.airport) != nil {
+            dlog("atc", "page moved to \(feed.airport): following it")
+            airport = feed.airport
+            Places.shared.noteConnected(feed.airport)
+        }
         updateNowPlaying()
     }
 
@@ -373,7 +381,14 @@ final class Mixer {
             }
         }
         if towerInBrowser {
-            LiveATCBrowser.shared.setSuspended(false)
+            let browser = LiveATCBrowser.shared
+            if browser.suspended {
+                // Skyfi paused it: lift that and the page carries on.
+                browser.setSuspended(false)
+            } else if browser.isOpen, browser.media != .playing {
+                // The page stopped on its own; only your tap on its play button can restart it.
+                browser.expand()
+            }
         } else if let feed {
             setATCItem(AVPlayerItem(url: feed.url))
             atcPlayer.play()

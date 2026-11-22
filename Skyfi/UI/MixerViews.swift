@@ -53,11 +53,34 @@ struct MixerSheet: View {
     @State private var link = ""
     @FocusState private var linkFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @State private var places = Places.shared
+    @State private var query = ""
 
     var body: some View {
         @Bindable var mixer = mixer
         NavigationStack {
             List {
+                if !query.isEmpty {
+                    Section("Airports") {
+                        let results = Catalog.search(query)
+                        if results.isEmpty {
+                            Text("No airport with a live feed matches \"\(query)\".")
+                                .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                        }
+                        ForEach(results.prefix(20)) { airport in
+                            airportRow(airport, distanceNM: distance(to: airport))
+                        }
+                    }
+                }
+
+                if query.isEmpty, !(places.favorites.isEmpty && places.recents.isEmpty) {
+                    Section("Your airports") {
+                        ForEach(yourAirports) { airport in
+                            airportRow(airport, distanceNM: distance(to: airport), starred: places.isFavorite(airport.icao))
+                        }
+                    }
+                }
+
                 Section("Music") {
                     HStack {
                         TextField("Paste a YouTube link", text: $link)
@@ -122,6 +145,7 @@ struct MixerSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search airports (BOS, Logan, Boston)")
             .navigationTitle("Mixer")
             .navigationBarTitleDisplayMode(.inline)
         }
@@ -161,7 +185,7 @@ struct MixerSheet: View {
             }
             .tint(Theme.cyan)
             ForEach(Catalog.airports(near: center).prefix(12)) { item in
-                airportRow(item)
+                airportRow(item.airport, distanceNM: item.distanceNM)
             }
         } header: {
             Text("Airport")
@@ -174,19 +198,45 @@ struct MixerSheet: View {
         }
     }
 
-    private func airportRow(_ item: Catalog.NearbyAirport) -> some View {
-        Button { mixer.connect(item.airport) } label: {
+    /// Starred airports first, then recent ones that aren't starred.
+    private var yourAirports: [Airport] {
+        let icaos = places.favorites + places.recents.filter { !places.isFavorite($0) }
+        return icaos.compactMap { AirportIndex.shared.airport(icao: $0) }.filter { Catalog.connectable.contains($0.icao) }
+    }
+
+    private func distance(to airport: Airport) -> Double {
+        Geo.distanceNM(center.latitude, center.longitude, airport.lat, airport.lon)
+    }
+
+    private func airportRow(_ airport: Airport, distanceNM: Double, starred: Bool = false) -> some View {
+        Button {
+            query = ""
+            mixer.connect(airport)
+        } label: {
             HStack {
-                Image(systemName: mixer.airport == item.airport.icao ? "headphones.circle.fill" : "headphones")
+                Image(systemName: mixer.airport == airport.icao ? "headphones.circle.fill" : "headphones")
                     .foregroundStyle(Theme.cyan)
                     .frame(width: 24)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(item.airport.code).font(Theme.mono(14, .bold)).foregroundStyle(Theme.text)
-                    Text(item.airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(airport.code).font(Theme.mono(14, .bold)).foregroundStyle(Theme.text)
+                        if starred {
+                            Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(Theme.amber)
+                        }
+                    }
+                    Text(airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                 }
                 Spacer()
-                Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                Text("\(Int(distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
             }
+        }
+        .swipeActions {
+            Button {
+                places.toggleFavorite(airport.icao)
+            } label: {
+                Label(places.isFavorite(airport.icao) ? "Unstar" : "Star", systemImage: places.isFavorite(airport.icao) ? "star.slash" : "star")
+            }
+            .tint(Theme.amber)
         }
     }
 

@@ -7,6 +7,8 @@ struct AirportSheet: View {
 
     @Environment(TrafficStore.self) private var traffic
     @Environment(Mixer.self) private var mixer
+    @State private var places = Places.shared
+    @State private var weather = WeatherStore.shared
 
     private var isConnected: Bool { mixer.airport == airport.icao }
 
@@ -30,6 +32,9 @@ struct AirportSheet: View {
                     }
                     .listRowBackground(Color.clear)
                 }
+
+                WeatherSection(airport: airport, metar: weather.metar(airport.icao),
+                               runways: RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)))
 
                 Section {
                     if feeds.isEmpty {
@@ -98,6 +103,24 @@ struct AirportSheet: View {
             .scrollContentBackground(.hidden)
             .navigationTitle(airport.code)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        places.toggleFavorite(airport.icao)
+                    } label: {
+                        Image(systemName: places.isFavorite(airport.icao) ? "star.fill" : "star")
+                            .foregroundStyle(Theme.amber)
+                    }
+                    .accessibilityLabel(places.isFavorite(airport.icao) ? "Remove from favorites" : "Add to favorites")
+                }
+            }
+            .task(id: airport.icao) {
+                // Keeps the weather fresh while the card is open (the store caches 10 minutes).
+                while !Task.isCancelled {
+                    await weather.refresh(airport.icao)
+                    try? await Task.sleep(for: .seconds(120))
+                }
+            }
         }
     }
 
@@ -150,5 +173,59 @@ struct AirportSheet: View {
     private func isFailed(_ status: Mixer.Status) -> Bool {
         if case .failed = status { return true }
         return false
+    }
+}
+
+/// METAR line on the airport card: flight category, wind, visibility, ceiling, and the runway guess.
+struct WeatherSection: View {
+    let airport: Airport
+    let metar: METAR?
+    let runways: RunwayGuess.Result?
+    @State private var showRaw = false
+
+    var body: some View {
+        if let metar {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Text(metar.category.rawValue)
+                            .font(Theme.mono(11, .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Self.color(metar.category).opacity(0.25), in: Capsule())
+                            .foregroundStyle(Self.color(metar.category))
+                        Text(metar.windText).font(Theme.mono(13)).foregroundStyle(Theme.text)
+                        Spacer()
+                        if let observed = metar.observed {
+                            Text(Format.ago(observed)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                    Text([metar.visibilityText, metar.ceilingText, metar.weather, metar.temperatureText,
+                          metar.altimeterInHg.map { String(format: "%.2f inHg", $0) }]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    if let runways, !runways.runways.isEmpty {
+                        Text("Runway\(runways.runways.count > 1 ? "s" : "") \(runways.runways.joined(separator: ", ")) \(runways.fromTraffic ? "in use (recent traffic)" : "favored by the wind")")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.cyan)
+                    }
+                    if showRaw {
+                        Text(metar.raw).font(Theme.mono(11, .regular)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { showRaw.toggle() }
+            } header: {
+                Text("Weather")
+            }
+        }
+    }
+
+    static func color(_ category: FlightCategory) -> Color {
+        switch category {
+        case .vfr: return .green
+        case .mvfr: return Color(red: 0.35, green: 0.6, blue: 1.0)
+        case .ifr: return .red
+        case .lifr: return Color(red: 0.85, green: 0.35, blue: 0.95)
+        }
     }
 }
