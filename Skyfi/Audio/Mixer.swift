@@ -124,10 +124,30 @@ final class Mixer {
             musicStatus = .failed("That doesn't look like a YouTube link.")
             return
         }
+        UserDefaults.standard.set("youtube:\(id)", forKey: "lastMusic")
         await playYouTube(id: id, title: nil, subtitle: "YouTube")
     }
 
+    /// What you last played ("preset:lofi-girl" or "youtube:<id>"), for the resume chip.
+    var lastMusicTitle: String? {
+        guard let last = UserDefaults.standard.string(forKey: "lastMusic") else { return nil }
+        if last.hasPrefix("preset:") {
+            return Catalog.presets.first { $0.id == String(last.dropFirst(7)) }?.title
+        }
+        return last.hasPrefix("youtube:") ? "your YouTube link" : nil
+    }
+
+    func playLastMusic() async {
+        guard let last = UserDefaults.standard.string(forKey: "lastMusic") else { return }
+        if last.hasPrefix("preset:"), let preset = Catalog.presets.first(where: { $0.id == String(last.dropFirst(7)) }) {
+            await play(preset)
+        } else if last.hasPrefix("youtube:") {
+            await playYouTube(String(last.dropFirst(8)))
+        }
+    }
+
     func play(_ preset: Preset) async {
+        UserDefaults.standard.set("preset:\(preset.id)", forKey: "lastMusic")
         switch preset.kind {
         case .youtube:
             await playYouTube(id: preset.value, title: preset.title, subtitle: preset.subtitle)

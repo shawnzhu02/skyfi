@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var browser = LiveATCBrowser.shared
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
+    @State private var resumeDismissed = false
     @AppStorage("altitudeColors") private var altitudeColors = false
     @State private var locator = Locator.shared
     @State private var locationDenied = false
@@ -47,6 +48,18 @@ struct RootView: View {
                             .background(Color.red.opacity(0.85), in: Capsule())
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
+                   let icao = Places.shared.recents.first, let airport = AirportIndex.shared.airport(icao: icao) {
+                    ResumeChip(airport: airport, music: mixer.lastMusicTitle) {
+                        resumeDismissed = true
+                        // Works for airports without a Skyfi feed list too (LiveATC's airport page).
+                        mixer.connectViaLiveATC(airport)
+                        Task { await mixer.playLastMusic() }
+                    } onClose: {
+                        resumeDismissed = true
+                    }
+                    .transition(.opacity)
                 }
                 if !seenTip, traffic.connected == nil, selectedPlane == nil {
                     FirstRunTip { seenTip = true }
@@ -479,5 +492,39 @@ struct FirstRunTip: View {
             Text(number).font(Theme.mono(12, .bold)).foregroundStyle(Theme.cyan).frame(width: 16)
             Text(text).font(.system(size: 13)).foregroundStyle(Theme.text)
         }
+    }
+}
+
+/// "Resume BOS + Lofi Girl": the last airport and music, one tap away at launch.
+struct ResumeChip: View {
+    let airport: Airport
+    let music: String?
+    var onResume: () -> Void
+    var onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onResume) {
+                HStack(spacing: 10) {
+                    Image(systemName: "play.circle.fill").font(.system(size: 22)).foregroundStyle(Theme.cyan)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Resume \(airport.code)\(music.map { " + \($0)" } ?? "")")
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                        Text("Where you left off").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
+                    .frame(width: 30, height: 30)
+            }
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .panel()
     }
 }
