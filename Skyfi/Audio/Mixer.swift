@@ -49,6 +49,10 @@ final class Mixer {
     @ObservationIgnored private var artwork: MPMediaItemArtwork?
     @ObservationIgnored private var retryTask: [ObjectIdentifier: Task<Void, Never>] = [:]
     @ObservationIgnored private var watchdogs: [String: Task<Void, Never>] = [:]
+    /// Told about every new tower item, so the transcript tap can attach to it.
+    @ObservationIgnored var onATCItemChange: ((AVPlayerItem?, ATCFeed?) -> Void)?
+    @ObservationIgnored private var duckGain: Float = 1
+    @ObservationIgnored private var duckTask: Task<Void, Never>?
 
     private init() {
         musicPlayer.automaticallyWaitsToMinimizeStalling = true
@@ -126,7 +130,7 @@ final class Mixer {
     func tune(_ feed: ATCFeed) {
         activateSession()
         self.feed = feed
-        atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
+        setATCItem(AVPlayerItem(url: feed.url))
         atcStatus = .loading
         atcPlayer.play()
         watchdog(isMusic: false)
@@ -134,8 +138,8 @@ final class Mixer {
     }
 
     func stopATC() {
-        atcPlayer.replaceCurrentItem(with: nil)
         feed = nil
+        setATCItem(nil)
         atcStatus = .idle
         updateNowPlaying()
     }
@@ -165,7 +169,7 @@ final class Mixer {
             musicStatus = .loading
         }
         if let feed {
-            atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
+            setATCItem(AVPlayerItem(url: feed.url))
             atcPlayer.play()
             atcStatus = .loading
         }
@@ -174,8 +178,31 @@ final class Mixer {
         updateNowPlaying()
     }
 
+    private func setATCItem(_ item: AVPlayerItem?) {
+        atcPlayer.replaceCurrentItem(with: item)
+        onATCItemChange?(item, item == nil ? nil : feed)
+    }
+
+    /// Dips the music while the tower is talking: 150 ms down to 35%, 600 ms back up.
+    func setDucked(_ ducked: Bool) {
+        let target: Float = ducked ? 0.35 : 1
+        guard target != duckGain || duckTask != nil else { return }
+        duckTask?.cancel()
+        let steps = ducked ? 5 : 20
+        let start = duckGain
+        duckTask = Task { [weak self] in
+            for step in 1...steps {
+                try? await Task.sleep(for: .milliseconds(30))
+                guard let self, !Task.isCancelled else { return }
+                self.duckGain = start + (target - start) * Float(step) / Float(steps)
+                self.applyVolumes()
+            }
+            self?.duckTask = nil
+        }
+    }
+
     private func applyVolumes() {
-        let musicGain = min(1, 2 * (1 - mix))
+        let musicGain = min(1, 2 * (1 - mix)) * duckGain
         let atcGain = min(1, 2 * mix)
         musicPlayer.volume = musicVolume * musicGain
         atcPlayer.volume = atcVolume * atcGain
@@ -277,7 +304,7 @@ final class Mixer {
                 self.musicPlayer.replaceCurrentItem(with: AVPlayerItem(url: url))
                 self.musicPlayer.play()
             } else if isATC, let feed = self.feed, self.atcStatus != .paused {
-                self.atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
+                self.setATCItem(AVPlayerItem(url: feed.url))
                 self.atcPlayer.play()
             }
         }

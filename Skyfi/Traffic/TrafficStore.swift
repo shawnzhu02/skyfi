@@ -22,6 +22,8 @@ final class TrafficStore {
     private(set) var limitedCoverage = false
 
     @ObservationIgnored private var tiles: [Tile] = []
+    @ObservationIgnored private var visibleTiles: [Tile] = []
+    @ObservationIgnored private var pinnedTile: Tile?
     @ObservationIgnored private var tileFetched: [Int: Date] = [:]
     @ObservationIgnored private var nextTile = 0
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -98,6 +100,24 @@ final class TrafficStore {
     func setVisibleRegion(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double) {
         let (newTiles, limited) = Self.makeTiles(center: center, latDelta: latDelta, lonDelta: lonDelta)
         limitedCoverage = limited
+        visibleTiles = newTiles
+        rebuildTiles()
+    }
+
+    /// Keeps polling around the tuned tower's airport, so "who's talking" has its planes
+    /// even when the map is looking somewhere else.
+    func setPinned(_ airport: Airport?) {
+        pinnedTile = airport.map { Tile(lat: $0.lat, lon: $0.lon, radiusNM: 60) }
+        rebuildTiles()
+    }
+
+    private func rebuildTiles() {
+        var newTiles = visibleTiles
+        if let pinned = pinnedTile, !newTiles.contains(where: {
+            Geo.distanceNM($0.lat, $0.lon, pinned.lat, pinned.lon) + Double(pinned.radiusNM) <= Double($0.radiusNM)
+        }) {
+            newTiles.append(pinned)
+        }
         guard newTiles != tiles else { return }
         tiles = newTiles
         tileFetched = [:]

@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(TrafficStore.self) private var traffic
     @Environment(Mixer.self) private var mixer
+    @Environment(TalkStore.self) private var talk
 
     @State private var selectedPlaneID: String?
     @State private var selectedAirport: Airport?
@@ -12,12 +13,14 @@ struct RootView: View {
     @State private var look: MapLook = .satellite
     @State private var showMixer = false
     @State private var showActivity = false
+    @State private var showTranscript = false
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            GlobeView(traffic: traffic, planes: traffic.planes, tunedAirport: mixer.feed?.airport, look: look,
+            GlobeView(traffic: traffic, planes: traffic.planes, tunedAirport: mixer.feed?.airport,
+                      talking: talk.talking, look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 })
                 .ignoresSafeArea()
@@ -29,6 +32,7 @@ struct RootView: View {
                     PlaneCard(plane: plane) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                TranscriptStrip(onPick: pick(planeID:), onOpen: { showTranscript = true })
                 MixerBar { showMixer = true }
                 Text("Traffic: \(traffic.provider.rawValue) · ATC: LiveATC.net")
                     .font(.system(size: 9))
@@ -54,6 +58,14 @@ struct RootView: View {
                 .presentationDetents([.medium, .large])
                 .presentationBackground(.ultraThinMaterial)
         }
+        .sheet(isPresented: $showTranscript) {
+            TranscriptSheet { id in
+                showTranscript = false
+                pick(planeID: id)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationBackground(.ultraThinMaterial)
+        }
         .sheet(isPresented: $showActivity) {
             ActivityList(events: traffic.events) { event in
                 showActivity = false
@@ -67,6 +79,13 @@ struct RootView: View {
             .presentationDetents([.medium, .large])
             .presentationBackground(.ultraThinMaterial)
         }
+    }
+
+    private func pick(planeID: String) {
+        guard let plane = traffic.planes[planeID] else { return }
+        selectedAirport = nil
+        selectedPlaneID = plane.id
+        focus = plane.position(at: Date())
     }
 
     private var topBar: some View {

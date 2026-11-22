@@ -16,6 +16,9 @@ packages:
   YouTubeKit:
     url: https://github.com/alexeichhorn/YouTubeKit
     from: "0.4.10"
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    exactVersion: "1.1.1"
 
 targets:
   Skyfi:
@@ -25,6 +28,8 @@ targets:
       - path: Skyfi
     dependencies:
       - package: YouTubeKit
+      - package: WhisperKit
+        product: WhisperKit
     info:
       path: Config/Info.plist
       properties:

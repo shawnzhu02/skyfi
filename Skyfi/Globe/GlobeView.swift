@@ -13,6 +13,7 @@ struct GlobeView: UIViewRepresentable {
     let traffic: TrafficStore
     let planes: [String: Plane]
     let tunedAirport: String?
+    let talking: [String: TalkStore.Talk]
     let look: MapLook
     @Binding var selectedPlaneID: String?
     @Binding var selectedAirport: Airport?
@@ -36,6 +37,7 @@ struct GlobeView: UIViewRepresentable {
         let start = CLLocationCoordinate2D(latitude: 42.36, longitude: -71.0)
         map.setRegion(MKCoordinateRegion(center: start, span: MKCoordinateSpan(latitudeDelta: 3, longitudeDelta: 3)), animated: false)
         context.coordinator.map = map
+        context.coordinator.installArrow(on: map)
         context.coordinator.startTicker()
         return map
     }
@@ -80,6 +82,8 @@ struct GlobeView: UIViewRepresentable {
         private var airportAnnotations: [String: AirportAnnotation] = [:]
         private var ticker: Timer?
         private var lastAirportRegion: MKCoordinateRegion?
+        private let arrow = UIImageView(image: UIImage(systemName: "location.north.fill",
+                                                       withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)))
 
         static let maxPlanes = 1500
         static let labelSpan = 1.2
@@ -100,8 +104,49 @@ struct GlobeView: UIViewRepresentable {
             ticker = nil
         }
 
+        func installArrow(on map: MKMapView) {
+            arrow.isHidden = true
+            arrow.layer.shadowColor = UIColor.black.cgColor
+            arrow.layer.shadowOpacity = 0.8
+            arrow.layer.shadowRadius = 3
+            arrow.layer.shadowOffset = .zero
+            map.addSubview(arrow)
+        }
+
+        /// Points at the plane that's talking when it is off screen.
+        private func updateArrow() {
+            guard let map else { return }
+            let latest = parent.talking.filter { $0.value.isFresh }.max { $0.value.time < $1.value.time }
+            guard let latest, let plane = parent.planes[latest.key] else {
+                arrow.isHidden = true
+                return
+            }
+            let point = map.convert(plane.position(at: Date()), toPointTo: map)
+            let safe = map.bounds.inset(by: UIEdgeInsets(top: 120, left: 24, bottom: 200, right: 24))
+            if safe.contains(point) || map.bounds.contains(point) {
+                arrow.isHidden = true
+                return
+            }
+            let center = CGPoint(x: safe.midX, y: safe.midY)
+            let dx = point.x - center.x, dy = point.y - center.y
+            let scale = min(abs(safe.width / 2 / max(abs(dx), 0.001)), abs(safe.height / 2 / max(abs(dy), 0.001)))
+            arrow.center = CGPoint(x: center.x + dx * scale, y: center.y + dy * scale)
+            arrow.transform = CGAffineTransform(rotationAngle: atan2(dy, dx) + .pi / 2)
+            arrow.tintColor = latest.value.speaker == .pilot ? Theme.uiAmber : Theme.uiCyan
+            arrow.isHidden = false
+        }
+
         /// Glides every plane to where it should be one second from now.
         private func tick() {
+            updateArrow()
+            if let map {
+                // Ring and bubble expire on their own, without waiting for new traffic.
+                for annotation in planeAnnotations.values {
+                    if let view = map.view(for: annotation) as? PlaneAnnotationView {
+                        view.setTalk(parent.talking[annotation.id])
+                    }
+                }
+            }
             let target = Date().addingTimeInterval(1)
             UIView.animate(withDuration: 1, delay: 0, options: [.curveLinear, .allowUserInteraction, .beginFromCurrentState]) {
                 for annotation in self.planeAnnotations.values {
@@ -219,6 +264,7 @@ struct GlobeView: UIViewRepresentable {
             view.configure(plane: plane, style: style(for: plane, tuned: tuned),
                            showLabel: map.region.span.latitudeDelta < Self.labelSpan || plane.id == parent.selectedPlaneID,
                            mapHeading: map.camera.heading)
+            view.setTalk(parent.talking[plane.id])
         }
 
         // MARK: MKMapViewDelegate

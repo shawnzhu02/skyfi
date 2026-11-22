@@ -109,3 +109,25 @@ Fact behind phase 2: VHF airband radio carries no transmitter ID, so radios at a
   - lock screen play/pause works;
   - audio resumes after a phone call.
 - Phase 2: the parser unit tests pass; on the device, a plane is highlighted within about 3 s of its callsign being spoken on the KBOS feed.
+
+---
+
+# Phase 2 as built: who's talking (branch `talk`)
+
+Airband radio has no transmitter ID, so the speaker is inferred from the words: read the callsign, match it to a real ADS-B plane near the tuned airport.
+
+**Engine change from the first plan.** Apple's on-device recognizer is a generic model; generic speech recognition gets roughly 50-95% of ATC words wrong. Skyfi uses Whisper medium.en fine-tuned on ATC radio instead (jacktol/whisper-medium.en-fine-tuned-for-ATC, MIT), in the Core ML conversion published by Arthur-Z-Dent/atcpal-whisperkit (MIT), run with WhisperKit 1.1.1. That conversion reports 14.7% word error rate on the ATCO2 test recordings (16.1% on the 79 recordings outside the base model's training data) and about 0.84 s per transmission on an iPhone 17. The app downloads it once (1.5 GB, pinned to revision d91954d7) into Application Support; phones with under 6 GB of memory don't offer it.
+
+Pipeline:
+1. `ATC/ATCTap.swift`: MTAudioProcessingTap on the tower AVPlayerItem (LiveATC is progressive MP3, so taps work), downmix and resample to 16 kHz.
+2. `ATC/Squelch.swift`: energy against an adaptive noise floor cuts transmissions (open 9 dB above floor for 100 ms, close after 500 ms, 15 s max, 200 ms pre-roll). Also drives music ducking.
+3. `ATC/ATCModel.swift`: download + WhisperKit transcription, one call per transmission, no-speech results dropped.
+4. `ATC/Phraseology.swift`: numbers to digits ("two thirty four" = 234, niner/tree/fife), runway and instruction type.
+5. `ATC/CallsignMatcher.swift`: generates the spoken forms of each candidate plane (airline telephony from OpenFlights, US N-numbers full and short, letter registrations) and scores them against the transcript, anchored on the number. Context bonuses from the instruction (landing favours planes on approach, taxi favours planes on the ground) and runway. Accepts only a score of 0.70+ that leads the runner-up by 0.08; otherwise the line shows "?" and nothing glows.
+6. Speaker: callsign first = controller talking to the plane; callsign last, or after a facility name ("Boston tower, …") = pilot.
+7. `ATC/TalkStore.swift` keeps the transcript and the glowing planes (6 s); `TrafficStore.setPinned` keeps polling 60 nm around the tuned airport.
+8. UI: pulsing ring + speech bubble on the plane, arrow at the screen edge when it's off screen, transcript strip above the mixer, full transcript sheet with toggles and match debug numbers.
+
+Transcription runs only while Skyfi is on screen; audio keeps playing in the background.
+
+On-device check: tune KBOS tower at a busy hour, turn on "Show match details", and count right / wrong / "?" over 50 transmissions. Target: 70%+ right, under 10% wrong. "Callsign hints" (nearby callsigns as a Whisper prompt) is off by default; compare it on and off.

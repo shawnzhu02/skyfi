@@ -39,6 +39,8 @@ final class PlaneAnnotationView: MKAnnotationView {
 
     private let glyph = UIImageView()
     private let label = UILabel()
+    private let ring = CAShapeLayer()
+    private let bubble = PaddedLabel()
     private var style: Style?
 
     private static let images: [Style: UIImage] = {
@@ -76,6 +78,21 @@ final class PlaneAnnotationView: MKAnnotationView {
         canShowCallout = false
         collisionMode = .circle
         displayPriority = .required
+
+        ring.path = UIBezierPath(ovalIn: bounds.insetBy(dx: -4, dy: -4)).cgPath
+        ring.fillColor = UIColor.clear.cgColor
+        ring.lineWidth = 2.5
+        ring.frame = bounds
+        ring.isHidden = true
+        layer.insertSublayer(ring, at: 0)
+
+        bubble.font = .systemFont(ofSize: 11, weight: .semibold)
+        bubble.textColor = .white
+        bubble.numberOfLines = 2
+        bubble.layer.cornerRadius = 9
+        bubble.layer.masksToBounds = true
+        bubble.isHidden = true
+        addSubview(bubble)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -93,6 +110,59 @@ final class PlaneAnnotationView: MKAnnotationView {
         glyph.transform = CGAffineTransform(rotationAngle: angle)
         label.isHidden = !showLabel
         label.text = plane.title
+    }
+
+    /// Glow ring and speech bubble while this plane is on the frequency.
+    func setTalk(_ talk: TalkStore.Talk?) {
+        guard let talk, talk.isFresh else {
+            if !ring.isHidden {
+                ring.removeAllAnimations()
+                ring.isHidden = true
+                bubble.isHidden = true
+                zPriority = style == .selected ? .max : .defaultUnselected
+            }
+            return
+        }
+        let color = talk.speaker == .pilot ? Theme.uiAmber : Theme.uiCyan
+        ring.strokeColor = color.cgColor
+        ring.isHidden = false
+        if ring.animation(forKey: "pulse") == nil {
+            let scale = CABasicAnimation(keyPath: "transform.scale")
+            scale.fromValue = 0.8
+            scale.toValue = 1.9
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 1
+            fade.toValue = 0
+            let group = CAAnimationGroup()
+            group.animations = [scale, fade]
+            group.duration = 1.1
+            group.repeatCount = .infinity
+            ring.add(group, forKey: "pulse")
+        }
+        let arrow = talk.speaker == .pilot ? "✈︎ " : (talk.speaker == .controller ? "TWR ▸ " : "")
+        let text = talk.text.count > 42 ? String(talk.text.prefix(40)) + "…" : talk.text
+        bubble.text = arrow + text
+        bubble.backgroundColor = color.withAlphaComponent(0.85)
+        bubble.textColor = .black
+        let size = bubble.sizeThatFits(CGSize(width: 190, height: 40))
+        bubble.frame = CGRect(x: bounds.midX - size.width / 2, y: -size.height - 6, width: size.width, height: size.height)
+        bubble.isHidden = false
+        zPriority = .max
+    }
+}
+
+/// A label with padding, for map bubbles.
+final class PaddedLabel: UILabel {
+    var insets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+
+    override func drawText(in rect: CGRect) {
+        super.drawText(in: rect.inset(by: insets))
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        let inner = super.sizeThatFits(CGSize(width: size.width - insets.left - insets.right, height: size.height))
+        return CGSize(width: min(inner.width + insets.left + insets.right, size.width),
+                      height: inner.height + insets.top + insets.bottom)
     }
 }
 
