@@ -30,7 +30,6 @@ enum YouTubeSource {
             ?? audio.filter { $0.fileExtension == .m4a }.highestAudioBitrateStream()
             ?? streams.filterVideoAndAudio().filter { $0.isNativelyPlayable }.lowestResolutionStream()
         guard let pick else { throw ResolveError.noAudio }
-        try await pick.waitUntilAvailable()
         return Resolved(url: pick.url, title: title, isLive: false)
     }
 }
