@@ -25,6 +25,7 @@ final class TrafficStore {
     /// Where each plane has been since it showed up (newest last), for the selected plane's trail.
     @ObservationIgnored private(set) var trails: [String: [CLLocationCoordinate2D]] = [:]
     static let maxTrailPoints = 240
+    @ObservationIgnored private var trailTimes: [String: Date] = [:]
 
     func trail(_ planeID: String?) -> [CLLocationCoordinate2D] {
         planeID.flatMap { trails[$0] } ?? []
@@ -120,6 +121,7 @@ final class TrafficStore {
         nextTile = 0
         planes = [:]
         trails = [:]
+        trailTimes = [:]
         errorsInRow = 0
         failing = false
     }
@@ -168,17 +170,25 @@ final class TrafficStore {
             addTrailPoint(plane)
         }
         updated = updated.filter { now.timeIntervalSince($0.value.lastSeen) < Self.staleAfter }
-        if trails.count > updated.count { trails = trails.filter { updated[$0.key] != nil } }
+        if trails.count > updated.count {
+            trails = trails.filter { updated[$0.key] != nil }
+            trailTimes = trailTimes.filter { updated[$0.key] != nil }
+        }
         planes = updated
         lastUpdate = now
     }
 
     private func addTrailPoint(_ plane: Plane) {
-        var points = trails[plane.id] ?? []
-        if let last = points.last, Geo.distanceNM(last.latitude, last.longitude, plane.lat, plane.lon) < 0.05 { return }
-        points.append(CLLocationCoordinate2D(latitude: plane.lat, longitude: plane.lon))
-        if points.count > Self.maxTrailPoints { points.removeFirst(points.count - Self.maxTrailPoints) }
-        trails[plane.id] = points
+        // Lost for a while (out of range, no reports): start over rather than draw a line across the gap.
+        if let last = trailTimes[plane.id], plane.fixTime.timeIntervalSince(last) > 60 { trails[plane.id] = nil }
+        if let last = trails[plane.id]?.last,
+           Geo.distanceNM(last.latitude, last.longitude, plane.lat, plane.lon) < 0.05 { return }
+        trailTimes[plane.id] = plane.fixTime
+        // Appends in place (no copy of the array per point).
+        trails[plane.id, default: []].append(CLLocationCoordinate2D(latitude: plane.lat, longitude: plane.lon))
+        if let count = trails[plane.id]?.count, count > Self.maxTrailPoints {
+            trails[plane.id]?.removeFirst(count - Self.maxTrailPoints)
+        }
     }
 
     private func record(_ event: AirportEvent) {

@@ -37,7 +37,10 @@ struct AirportSheet: View {
                                runways: RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)))
 
                 Section {
-                    if feeds.isEmpty {
+                    if feeds.isEmpty, !mixer.towerInBrowser {
+                        Text("No live feed for this airport in Skyfi yet.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                    } else if feeds.isEmpty {
                         if isConnected {
                             Button { mixer.disconnect() } label: {
                                 Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")

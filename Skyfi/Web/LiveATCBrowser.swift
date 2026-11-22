@@ -83,6 +83,8 @@ final class LiveATCBrowser {
         self.feed = feed
         isOpen = true
         expand()
+        // A new connect is a fresh start: lift any old Skyfi pause so the page's play works.
+        setSuspended(false)
         guard !same else { return }
         media = .none
         load(Self.playerURL(for: feed))
@@ -94,6 +96,7 @@ final class LiveATCBrowser {
         feed = nil
         isOpen = true
         expand()
+        setSuspended(false)
         media = .none
         load(Self.airportURL(icao: icao))
         startPolling()

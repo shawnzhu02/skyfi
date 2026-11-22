@@ -61,6 +61,10 @@ struct RootView: View {
         }
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }
+        .onChange(of: traffic.connected) { _, airport in
+            // Connected once: the tip has done its job.
+            if airport != nil { seenTip = true }
+        }
         .onChange(of: mixer.airport) { _, icao in
             // Connecting shows that airport's planes and zooms to its 60 nm ring; disconnecting clears them.
             let airport = icao.flatMap { AirportIndex.shared.airport(icao: $0) }

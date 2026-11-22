@@ -290,8 +290,14 @@ final class Mixer {
     /// For an airport Skyfi has no feed list for: connects its planes and opens LiveATC's page
     /// for it, where you pick a feed (the pick becomes the tower feed).
     func connectViaLiveATC(_ airport: Airport) {
-        if !Catalog.feeds(at: airport.icao).isEmpty {
+        if !Catalog.feeds(at: airport.icao).isEmpty || !towerInBrowser {
             connect(airport)
+            return
+        }
+        let browser = LiveATCBrowser.shared
+        if self.airport == airport.icao, browser.isOpen {
+            // Already here (maybe with a feed you picked on the page): just show it.
+            browser.expand()
             return
         }
         dlog("atc", "connect \(airport.icao) via LiveATC's airport page")

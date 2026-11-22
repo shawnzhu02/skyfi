@@ -25,7 +25,9 @@ enum LikelyFacility: String, Equatable {
         if plane.onGround {
             return TrafficStore.onField(plane, airport) ? .ground : nil
         }
-        let agl = (plane.altitude ?? airport.elev) - airport.elev
+        // No altitude: too little to go on.
+        guard let altitude = plane.altitude else { return nil }
+        let agl = altitude - airport.elev
         if distance <= 8, agl <= 3000 { return .tower }
         if distance > 60 || agl > 18000 { return .center }
         let climbing = (plane.verticalRate ?? 0) > 300
