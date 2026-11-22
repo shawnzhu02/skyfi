@@ -11,11 +11,15 @@ struct SkyfiApp: App {
                 .environment(traffic)
                 .environment(Mixer.shared)
                 .environment(TalkStore.shared)
-                .onAppear { TalkStore.shared.connect(traffic: traffic) }
+                .onAppear {
+                    dlog("app", "launch: \(DebugLog.header().replacingOccurrences(of: "\n", with: " · "))")
+                    TalkStore.shared.connect(traffic: traffic)
+                }
                 .preferredColorScheme(.dark)
         }
         .onChange(of: scenePhase) { _, phase in
             // Audio keeps playing in the background; only the map polling stops.
+            dlog("app", "scene \(phase)")
             traffic.setActive(phase == .active)
             TalkStore.shared.foreground = phase == .active
         }

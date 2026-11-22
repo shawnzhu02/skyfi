@@ -63,6 +63,8 @@ final class Mixer {
     /// Set by pause(): nothing may start playing again on its own until resume().
     @ObservationIgnored private var userPaused = false
     @ObservationIgnored private var backgroundTasks: [ObjectIdentifier: UIBackgroundTaskIdentifier] = [:]
+    /// Why the tower feed won't play, from the last probe or player error (shown in the status).
+    @ObservationIgnored private var atcProblem: String?
 
     private init() {
         musicPlayer.automaticallyWaitsToMinimizeStalling = true
@@ -88,6 +90,7 @@ final class Mixer {
         case .youtube:
             await playYouTube(id: preset.value, title: preset.title, subtitle: preset.subtitle)
         case .radio:
+            dlog("music", "radio preset \(preset.id): \(preset.value)")
             guard let url = URL(string: preset.value) else { return }
             musicRequest += 1
             music = Music(title: preset.title, subtitle: preset.subtitle, youtubeID: nil, isLive: true)
@@ -103,12 +106,15 @@ final class Mixer {
         musicStatus = .loading
         musicPlayer.pause()
         loadArtwork(youtubeID: id, request: request)
+        dlog("music", "YouTube resolve \(id)")
         do {
             let resolved = try await YouTubeSource.resolve(videoID: id)
+            dlog("music", "YouTube \(id) resolved: live=\(resolved.isLive) host=\(resolved.url.host ?? "?") title=\(resolved.title ?? "?")")
             guard request == musicRequest else { return }
             music = Music(title: title ?? resolved.title ?? "YouTube", subtitle: subtitle, youtubeID: id, isLive: resolved.isLive)
             startMusic(resolved.url)
         } catch {
+            dlog("music", "YouTube \(id) resolve failed: \(String(describing: error))")
             guard request == musicRequest else { return }
             musicStatus = .failed("YouTube wouldn't give audio for this one. Try another link.")
             updateNowPlaying()
@@ -116,6 +122,7 @@ final class Mixer {
     }
 
     private func startMusic(_ url: URL) {
+        dlog("music", "start \(url.host ?? "?")\(url.path.prefix(60))")
         activateSession()
         musicURL = url
         musicPlayer.replaceCurrentItem(with: makeMusicItem(url))
@@ -143,6 +150,7 @@ final class Mixer {
         let request = musicRequest
         if let id = music.youtubeID, music.isLive {
             guard let resolved = try? await YouTubeSource.resolve(videoID: id) else {
+                dlog("music", "reconnect: YouTube \(id) resolve failed")
                 guard request == musicRequest else { return }
                 musicStatus = .failed("Stream stopped. Tap play to try again.")
                 updateNowPlaying()
@@ -189,15 +197,18 @@ final class Mixer {
         let candidates = Catalog.feeds(at: airport.icao)
         guard !candidates.isEmpty else { return }
         if self.airport == airport.icao, !isFailed(atcStatus) { return }
+        dlog("atc", "connect \(airport.icao): \(candidates.map(\.mount).joined(separator: ", "))")
         cancelRetry(isMusic: false)
         retryCount[ObjectIdentifier(atcPlayer)] = 0
         userPaused = false
+        atcProblem = nil
         self.airport = airport.icao
         chain = FeedChain(airport: airport.icao, candidates: candidates)
         startATC(candidates[0])
     }
 
     func disconnect() {
+        dlog("atc", "disconnect")
         cancelRetry(isMusic: false)
         watchdogs["atc"]?.cancel()
         chain = nil
@@ -209,6 +220,8 @@ final class Mixer {
     }
 
     private func startATC(_ feed: ATCFeed) {
+        dlog("atc", "start \(feed.name) \(feed.url.absoluteString)")
+        probe(feed)
         activateSession()
         self.feed = feed
         setATCItem(AVPlayerItem(url: feed.url))
@@ -221,8 +234,10 @@ final class Mixer {
     /// The current tower item failed, stalled or never started.
     private func atcFailed() {
         guard var chain else { return }
+        let failedMount = chain.current?.mount ?? "?"
         let outcome = chain.failed()
         self.chain = chain
+        dlog("atc", "\(failedMount) failed: \(outcome), next \(chain.current?.mount ?? "none")\(atcProblem.map { " (\($0))" } ?? "")")
         guard let next = chain.current else { return }
         if userPaused {
             // Paused: remember which feed is next, start it on resume().
@@ -237,13 +252,13 @@ final class Mixer {
         case .retrySame:
             // Drop the dead item so a late start or a second failure event can't act on it.
             dropATCItem()
-            atcStatus = .failed("Feed dropped · reconnecting")
+            atcStatus = .failed(atcProblem.map { "\($0) · retrying" } ?? "Feed dropped · reconnecting")
             updateNowPlaying()
             scheduleRetry(isMusic: false)
         case .exhausted:
             dropATCItem()
             feed = next
-            atcStatus = .failed("No live feed at \(chain.airport) right now · retrying")
+            atcStatus = .failed("No live feed at \(chain.airport)\(atcProblem.map { ": \($0)" } ?? " right now") · retrying")
             updateNowPlaying()
             scheduleRetry(isMusic: false)
         }
@@ -357,6 +372,16 @@ final class Mixer {
                 MainActor.assumeIsolated { self?.handleItemProblem(item, ended: ended) }
             })
         }
+        observers.append(center.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: nil, queue: .main) { [weak self] note in
+            let item = note.object as? AVPlayerItem
+            MainActor.assumeIsolated {
+                guard let self, let item, let event = item.errorLog()?.events.last else { return }
+                dlog(self.area(of: item), "player error log: \(event.errorDomain) \(event.errorStatusCode) \(event.errorComment ?? "") \(event.uri ?? "")")
+                if item === self.atcPlayer.currentItem, event.errorStatusCode >= 400 {
+                    self.atcProblem = Self.problem(forHTTP: event.errorStatusCode)
+                }
+            }
+        })
         for (player, isMusic) in [(musicPlayer, true), (atcPlayer, false)] {
             statusObservers.append(player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
                 let status = player.timeControlStatus
@@ -399,6 +424,7 @@ final class Mixer {
         @unknown default: break
         }
         guard next != current else { return }
+        dlog(isMusic ? "music" : "atc", "status \(current) to \(next)")
         if isMusic { musicStatus = next } else { atcStatus = next }
         updateNowPlaying()
     }
@@ -430,6 +456,7 @@ final class Mixer {
         let isMusic = item === musicPlayer.currentItem
         let isATC = item === atcPlayer.currentItem
         guard isMusic || isATC else { return }
+        dlog(isMusic ? "music" : "atc", "\(ended ? "ended" : "problem"): \(describe(item))")
         if isMusic, ended, music?.isLive == false {
             musicStatus = .paused
             updateNowPlaying()
@@ -456,6 +483,7 @@ final class Mixer {
         let attempt = retryCount[key, default: 0]
         retryCount[key] = attempt + 1
         let delay = min(3 * pow(2, Double(attempt)), 30)
+        dlog(isMusic ? "music" : "atc", "retry #\(attempt + 1) in \(Int(delay)) s")
         if backgroundTasks[key] == nil {
             backgroundTasks[key] = UIApplication.shared.beginBackgroundTask { [weak self] in
                 MainActor.assumeIsolated { self?.endBackgroundTask(key) }
@@ -549,9 +577,67 @@ final class Mixer {
             try? await Task.sleep(for: .seconds(15))
             guard let self, !Task.isCancelled else { return }
             if isMusic, self.musicStatus == .loading {
+                dlog("music", "watchdog: no sound after 15 s, \(self.describe(self.musicPlayer.currentItem))")
                 self.musicStatus = .failed("Stream didn't start. Try again or pick another.")
             } else if !isMusic, self.atcStatus == .loading {
+                dlog("atc", "watchdog: no sound after 15 s, \(self.describe(self.atcPlayer.currentItem))")
                 self.atcFailed()
+            }
+        }
+    }
+
+    // MARK: Diagnostics (Mixer sheet > Debug log)
+
+    private func area(of item: AVPlayerItem) -> String {
+        item === atcPlayer.currentItem ? "atc" : (item === musicPlayer.currentItem ? "music" : "old item")
+    }
+
+    /// Player state and the newest error, for the log.
+    private func describe(_ item: AVPlayerItem?) -> String {
+        guard let item else { return "no item" }
+        var parts = ["item status \(item.status.rawValue)"]
+        if let error = item.error as NSError? {
+            parts.append("error \(error.domain) \(error.code): \(error.localizedDescription)")
+            if let under = error.userInfo[NSUnderlyingErrorKey] as? NSError {
+                parts.append("underlying \(under.domain) \(under.code): \(under.localizedDescription)")
+            }
+        }
+        if let event = item.errorLog()?.events.last {
+            parts.append("last log error \(event.errorDomain) \(event.errorStatusCode) \(event.errorComment ?? "")")
+        }
+        if let access = item.accessLog()?.events.last {
+            parts.append("server \(access.serverAddress ?? "?") bytes \(access.numberOfBytesTransferred)")
+        }
+        return parts.joined(separator: " | ")
+    }
+
+    private static func problem(forHTTP code: Int) -> String {
+        switch code {
+        case 401, 403: return "LiveATC refused the stream (HTTP \(code))"
+        case 404: return "Feed not found (HTTP 404)"
+        default: return "Feed server error (HTTP \(code))"
+        }
+    }
+
+    /// Asks the feed for its headers once (then hangs up), so the log and the status line
+    /// say whether the server refused us, the mount is gone, or the stream itself is fine.
+    private func probe(_ feed: ATCFeed) {
+        let url = feed.url
+        let mount = feed.mount
+        Task { [weak self] in
+            var request = URLRequest(url: url, timeoutInterval: 10)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            do {
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                bytes.task.cancel()
+                let http = response as? HTTPURLResponse
+                let code = http?.statusCode ?? 0
+                let type = http?.value(forHTTPHeaderField: "Content-Type") ?? "?"
+                dlog("atc", "probe \(mount): HTTP \(code) \(type) via \(response.url?.host ?? "?")")
+                guard let self, self.feed?.mount == mount else { return }
+                self.atcProblem = code >= 400 ? Self.problem(forHTTP: code) : nil
+            } catch {
+                dlog("atc", "probe \(mount) failed: \(error.localizedDescription)")
             }
         }
     }

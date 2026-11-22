@@ -3,11 +3,10 @@ import Observation
 import UIKit
 import WhisperKit
 
-/// The on-device ATC speech model: Whisper medium.en fine-tuned on air traffic control
-/// radio (jacktol/whisper-medium.en-fine-tuned-for-ATC, MIT), converted to Core ML for
-/// WhisperKit by Arthur-Z-Dent/atcpal-whisperkit (MIT). About 15% word error rate on the
-/// ATCO2 test recordings vs roughly 50%+ for generic speech recognizers.
-/// Downloaded once (1.5 GB, pinned to one revision) into Application Support.
+/// The on-device ATC speech model: Whisper small.en fine-tuned on air traffic control radio
+/// (jlvdoorn/WhisperATC, TU Delft), converted to Core ML for WhisperKit by
+/// stebox/whisperkit-atc-coreml (MIT). About 13.5% word error rate on the ATCO2 recordings vs
+/// roughly 50% for generic Whisper. Downloaded once (488 MB, pinned) into Application Support.
 @Observable
 @MainActor
 final class ATCModel {
@@ -22,33 +21,54 @@ final class ATCModel {
         case unsupported
     }
 
-    static let repo = "Arthur-Z-Dent/atcpal-whisperkit"
-    static let revision = "d91954d7bc282504b02cebcbd93a99ea192b9457"
-    static let variant = "medium.en-atc"
+    static let repo = "stebox/whisperkit-atc-coreml"
+    static let revision = "7cd30d79f2a2acbe662b78e91de4dd99e573a4c1"
+    static let variant = "small.en-atco2-asr"
+    /// The converted repo has no tokenizer; small.en uses the same one as OpenAI's original.
+    static let tokenizerRepo = "openai/whisper-small.en"
+    static let tokenizerRevision = "e8727524f962ee844a7319d92be39ac1bd25655a"
     static let files: [(path: String, size: Int64)] = [
         ("AudioEncoder.mlmodelc/analytics/coremldata.bin", 243),
         ("AudioEncoder.mlmodelc/coremldata.bin", 408),
-        ("AudioEncoder.mlmodelc/metadata.json", 1921),
-        ("AudioEncoder.mlmodelc/model.mil", 5_904_331),
-        ("AudioEncoder.mlmodelc/weights/weight.bin", 614_460_544),
+        ("AudioEncoder.mlmodelc/metadata.json", 1_916),
+        ("AudioEncoder.mlmodelc/model.mil", 2_236_846),
+        ("AudioEncoder.mlmodelc/weights/weight.bin", 176_323_456),
         ("MelSpectrogram.mlmodelc/analytics/coremldata.bin", 243),
         ("MelSpectrogram.mlmodelc/coremldata.bin", 389),
-        ("MelSpectrogram.mlmodelc/metadata.json", 1947),
+        ("MelSpectrogram.mlmodelc/metadata.json", 1_947),
         ("MelSpectrogram.mlmodelc/model.mil", 10_133),
         ("MelSpectrogram.mlmodelc/weights/weight.bin", 354_080),
         ("TextDecoder.mlmodelc/analytics/coremldata.bin", 243),
-        ("TextDecoder.mlmodelc/coremldata.bin", 698),
-        ("TextDecoder.mlmodelc/metadata.json", 4869),
-        ("TextDecoder.mlmodelc/model.mil", 726_980),
-        ("TextDecoder.mlmodelc/weights/weight.bin", 913_426_224),
-        ("config.json", 1297),
-        ("generation_config.json", 1065),
+        ("TextDecoder.mlmodelc/coremldata.bin", 694),
+        ("TextDecoder.mlmodelc/metadata.json", 4_856),
+        ("TextDecoder.mlmodelc/model.mil", 381_628),
+        ("TextDecoder.mlmodelc/weights/weight.bin", 307_285_808),
+        ("config.json", 1_332),
+        ("generation_config.json", 1_183),
         ("tokenizer.json", 2_405_679),
         ("tokenizer_config.json", 805),
     ]
     static var totalBytes: Int64 { files.reduce(0) { $0 + $1.size } }
-    /// Medium needs room: phones with less than 6 GB of memory get killed loading it.
-    static var deviceSupported: Bool { ProcessInfo.processInfo.physicalMemory >= 5_500_000_000 }
+    /// Small loads in well under 1 GB of memory; any phone with 4 GB or more is fine.
+    static var deviceSupported: Bool { ProcessInfo.processInfo.physicalMemory >= 3_500_000_000 }
+
+    static func remoteURL(for path: String) -> URL {
+        if path.hasPrefix("tokenizer") {
+            return URL(string: "https://huggingface.co/\(tokenizerRepo)/resolve/\(tokenizerRevision)/\(path)")!
+        }
+        return URL(string: "https://huggingface.co/\(repo)/resolve/\(revision)/\(variant)/\(path)")!
+    }
+
+    /// Model folders from older builds (the 1.5 GB medium model) take space for nothing.
+    private static func removeOldModels() {
+        let root = folder.deletingLastPathComponent().deletingLastPathComponent()
+        let keep = folder.deletingLastPathComponent().lastPathComponent
+        let items = (try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []
+        for name in items where name != keep {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+            dlog("model", "removed old model folder \(name)")
+        }
+    }
 
     private(set) var state: State = .notDownloaded
     @ObservationIgnored private let engine = WhisperEngine()
@@ -65,6 +85,7 @@ final class ATCModel {
     }
 
     init() {
+        Self.removeOldModels()
         if !Self.deviceSupported {
             state = .unsupported
         } else if Self.isDownloaded {
@@ -98,6 +119,7 @@ final class ATCModel {
             await before?.value
             do {
                 if !Self.isDownloaded {
+                    dlog("model", "download start (\(Self.totalBytes / 1_000_000) MB)")
                     UIApplication.shared.isIdleTimerDisabled = true
                     defer { UIApplication.shared.isIdleTimerDisabled = false }
                     try await download()
@@ -107,16 +129,20 @@ final class ATCModel {
                     return
                 }
                 if generation == gen { state = .preparing }
+                dlog("model", "loading into memory")
+                let loadStart = Date()
                 try await engine.load(folder: Self.folder)
                 // The load itself can't be interrupted: check whether we were asked to stop meanwhile.
                 try Task.checkCancellation()
+                dlog("model", String(format: "ready in %.1f s", Date().timeIntervalSince(loadStart)))
                 if generation == gen { state = .ready }
             } catch {
                 if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
                     await engine.unload()
                     if generation == gen { state = Self.isDownloaded ? .downloaded : .notDownloaded }
-                } else if generation == gen {
-                    state = .failed(error.localizedDescription)
+                } else {
+                    dlog("model", "failed: \(String(describing: error))")
+                    if generation == gen { state = .failed(error.localizedDescription) }
                 }
             }
         }
@@ -176,7 +202,7 @@ final class ATCModel {
                 continue
             }
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let url = URL(string: "https://huggingface.co/\(Self.repo)/resolve/\(Self.revision)/\(Self.variant)/\(file.path)")!
+            let url = Self.remoteURL(for: file.path)
             let base = done
             // A paused or dropped download leaves resume data next to the file.
             let resumeFile = target.appendingPathExtension("resume")
@@ -197,6 +223,14 @@ final class ATCModel {
             }
             try? FileManager.default.removeItem(at: target)
             try FileManager.default.moveItem(at: temp, to: target)
+            // An error page saved as the file would fail later as a corrupt model; catch it here.
+            let got = (try? FileManager.default.attributesOfItem(atPath: target.path)[.size] as? Int64) ?? -1
+            guard got == file.size else {
+                try? FileManager.default.removeItem(at: target)
+                dlog("model", "\(file.path): got \(got) bytes, expected \(file.size)")
+                throw ModelError.badFile(file.path)
+            }
+            dlog("model", "downloaded \(file.path)")
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             var dir = Self.folder.deletingLastPathComponent()
@@ -210,6 +244,16 @@ final class ATCModel {
     func transcribe(_ samples: [Float], prompt: String?) async -> WhisperEngine.Heard? {
         guard state == .ready else { return nil }
         return await engine.transcribe(samples, prompt: prompt)
+    }
+}
+
+enum ModelError: LocalizedError {
+    case badFile(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .badFile(let path): return "Download of \(path) came back wrong. Tap to try again."
+        }
     }
 }
 

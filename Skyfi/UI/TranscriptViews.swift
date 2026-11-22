@@ -142,7 +142,7 @@ struct TranscriptSheet: View {
                 Section {
                     EmptyView()
                 } footer: {
-                    Text("Speech model: jacktol/whisper-medium.en-fine-tuned-for-ATC (MIT), Core ML conversion by Arthur-Z-Dent/atcpal-whisperkit (MIT), run with WhisperKit. Airline callsigns: OpenFlights (ODbL).")
+                    Text("Speech model: WhisperATC small.en fine-tuned on ATCO2 (TU Delft), Core ML conversion by stebox/whisperkit-atc-coreml (MIT), run with WhisperKit. Airline callsigns: OpenFlights (ODbL).")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -197,7 +197,7 @@ struct TranscriptSheet: View {
                 Button("Try again") { talk.model.start(load: mixer.feed != nil) }
             }
         case .unsupported:
-            Text("This iPhone doesn't have enough memory for the ATC speech model (needs 6 GB, iPhone 13 Pro or newer).")
+            Text("This iPhone doesn't have enough memory for the ATC speech model (needs 4 GB, iPhone 12 or newer).")
                 .font(.system(size: 13)).foregroundStyle(Theme.muted)
         }
     }

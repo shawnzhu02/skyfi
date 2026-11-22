@@ -112,7 +112,7 @@ final class TalkStore {
         feedAirport = airport
         feedKind = feed?.kind ?? .tower
         // TrafficStore already polls this airport: it follows Mixer.airport through RootView.
-        // The 1.5 GB model only sits in memory while a tower is tuned.
+        // The speech model only sits in memory while a tower is tuned.
         if feed == nil {
             model.unload()
         } else if enabled, ATCModel.isDownloaded {
@@ -157,12 +157,17 @@ final class TalkStore {
         let prompt = useHints ? matcher.hint(for: candidates) : nil
         let started = Date()
         let airport = feedAirport?.icao
-        guard let heard = await model.transcribe(transmission.samples, prompt: prompt) else { return }
+        guard let heard = await model.transcribe(transmission.samples, prompt: prompt) else {
+            dlog("talk", String(format: "%.1f s transmission: no speech", transmission.duration))
+            return
+        }
         let seconds = Date().timeIntervalSince(started)
         // The feed may have moved to another airport while the model was busy.
         guard let airport, feedAirport?.icao == airport else { return }
-        ingest(text: heard.text, start: transmission.start, duration: transmission.duration,
-               seconds: seconds, candidates: candidates)
+        let line = ingest(text: heard.text, start: transmission.start, duration: transmission.duration,
+                          seconds: seconds, candidates: candidates)
+        dlog("talk", String(format: "\"%@\" in %.1f s, match %@ (score %.2f, %ld planes)",
+                            heard.text, seconds, line.label ?? "none", line.score, candidates.count))
     }
 
     /// Everything after speech-to-text: normalize, match the callsign against the planes on

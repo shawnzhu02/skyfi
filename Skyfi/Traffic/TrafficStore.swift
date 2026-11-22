@@ -92,6 +92,9 @@ final class TrafficStore {
             merge(aircraft, now: Date())
         } catch {
             errorsInRow += 1
+            if errorsInRow <= 2 || errorsInRow % 10 == 0 {
+                dlog("adsb", "\(provider) poll failed (\(errorsInRow) in a row): \(error)")
+            }
             if errorsInRow >= 2 {
                 // Switch provider after two failures in a row.
                 let all = ADSBClient.Provider.allCases

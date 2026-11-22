@@ -41,11 +41,13 @@ final class ATCTap {
             for _ in 0..<600 {
                 if Task.isCancelled { return }
                 if let track = item.tracks.compactMap(\.assetTrack).first(where: { $0.mediaType == .audio }) {
+                    dlog("tap", "audio track found, installing tap")
                     self?.install(on: item, track: track)
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(500))
             }
+            dlog("tap", "no audio track after 5 min, transcription off for this item")
         }
     }
 
@@ -62,6 +64,7 @@ final class ATCTap {
         var tap: MTAudioProcessingTap?
         let status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
         guard status == noErr, let tap else {
+            dlog("tap", "MTAudioProcessingTapCreate failed: \(status)")
             Unmanaged.passUnretained(self).release()
             return
         }

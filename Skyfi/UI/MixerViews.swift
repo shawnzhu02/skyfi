@@ -141,8 +141,11 @@ struct MixerSheet: View {
         } header: {
             Text("Airport")
         } footer: {
-            NavigationLink("Check feeds (debug)") { FeedCheckView() }
-                .font(.system(size: 12))
+            HStack(spacing: 16) {
+                NavigationLink("Check feeds") { FeedCheckView() }
+                NavigationLink("Debug log") { DebugLogView() }
+            }
+            .font(.system(size: 12))
         }
     }
 
