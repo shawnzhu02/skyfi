@@ -263,3 +263,12 @@ final class LandingRunwayTests: XCTestCase {
         XCTAssertNil(EventDetector.landingRunway(plane(track: 270 - 40), at: boston), "230° matches nothing within 15°")
     }
 }
+
+final class LinkTests: XCTestCase {
+    func testSkyfiLinks() throws {
+        XCTAssertEqual(SkyfiLink.airport(from: try XCTUnwrap(URL(string: "skyfi://connect/KBOS")))?.icao, "KBOS")
+        XCTAssertEqual(SkyfiLink.airport(from: try XCTUnwrap(URL(string: "skyfi://connect/jfk")))?.icao, "KJFK")
+        XCTAssertNil(SkyfiLink.airport(from: try XCTUnwrap(URL(string: "https://connect/KBOS"))))
+        XCTAssertNil(SkyfiLink.airport(from: try XCTUnwrap(URL(string: "skyfi://other/KBOS"))))
+    }
+}

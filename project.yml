@@ -51,6 +51,10 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIUserInterfaceStyle: Dark
+        # skyfi://connect/BOS
+        CFBundleURLTypes:
+          - CFBundleURLName: com.shawnzhu.skyfi
+            CFBundleURLSchemes: [skyfi]
         # Only asked when you tap the locate button.
         NSLocationWhenInUseUsageDescription: Skyfi centers the map on you and suggests the nearest airport with a live tower feed. Your location stays on your phone.
         # Music and tower audio keep playing with the app closed or the phone locked.

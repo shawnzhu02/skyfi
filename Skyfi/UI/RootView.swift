@@ -76,7 +76,20 @@ struct RootView: View {
             }
         }
         .background(Theme.background)
-        .onAppear { traffic.setActive(true) }
+        .onAppear {
+            traffic.setActive(true)
+            // A shortcut may have connected before this view was watching.
+            if let icao = mixer.airport, traffic.connected?.icao != icao {
+                traffic.connect(AirportIndex.shared.airport(icao: icao))
+            }
+        }
+        .onOpenURL { url in
+            if let airport = SkyfiLink.airport(from: url) {
+                dlog("app", "link: connect \(airport.icao)")
+                selectedAirport = nil
+                mixer.connect(airport)
+            }
+        }
         .onChange(of: selectedPlaneID) { _, _ in following = false }
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
