@@ -138,8 +138,7 @@ final class PlaneAnnotationView: MKAnnotationView {
             second.append(String(format: "%03d", max(0, altitude) / 100))
         }
         if let speed = plane.groundSpeed, !plane.onGround { second.append(String(Int(speed / 10))) }
-        return second.isEmpty ? plane.title : plane.title + "
-" + second.joined(separator: " ")
+        return second.isEmpty ? plane.title : plane.title + "\n" + second.joined(separator: " ")
     }
 
     func configure(plane: Plane, style: Style, showLabel: Bool, mapHeading: Double, altitudeColors: Bool = false,
@@ -164,8 +163,7 @@ final class PlaneAnnotationView: MKAnnotationView {
         glyph.transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale, y: scale)
         label.isHidden = !showLabel
         label.text = dataBlocks ? Self.dataBlock(plane) : plane.title
-        let lines: CGFloat = dataBlocks && label.text?.contains("
-") == true ? 2 : 1
+        let lines: CGFloat = dataBlocks && label.text?.contains("\n") == true ? 2 : 1
         label.numberOfLines = Int(lines)
         label.frame = CGRect(x: -25, y: 28, width: 80, height: 13 * lines)
         isAccessibilityElement = true
