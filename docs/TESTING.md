@@ -35,13 +35,19 @@ If step 3 or 6 fails, note what the debug log says under `[web]`.
 - A plane that stops reporting shows "No signal for N s" and follow pauses.
 - Follow: the map keeps it centered. Dragging the map stops following.
 - FlightAware and Share buttons.
-- Activity (list icon) > search "DAL" finds Delta flights on the map.
-- About > Map > Color planes by altitude.
+- Activity (list icon) > search "DAL" finds Delta flights on the map. Search a flight far away (e.g. a callsign from FlightAware) > Search worldwide > pick it: the map flies there and its card opens.
+- Activity shows "Notable nearby": military, A380s, 747s, emergencies.
+- Plane card: "12 nm SW of BOS" line; tap BOS or LAX on the route bar to open that airport.
+- About > Map > Color planes by altitude (a legend shows top right). Keep the screen on while connected.
 
 ## Other
 
 - Locate button: asks for location once, centers on you, offers the nearest airport.
 - Mixer > moon icon: sleep timer (try 15 min, then turn it off).
+- Mixer > AirPlay icon (top left): play on a speaker or AirPods.
+- Lock screen with only the tower playing: Skyfi's radio-wave artwork.
+- Airport card > share icon: sends a skyfi:// link.
+- An airport with no feed (e.g. a small field): "Nearby towers with a feed" lists the closest ones.
 - Second launch: "Resume BOS + <music>" chip.
 - Siri: "Connect to BOS in Skyfi" (or Shortcuts app > Skyfi).
 - Safari: `skyfi://connect/JFK` opens Skyfi connected to JFK.
