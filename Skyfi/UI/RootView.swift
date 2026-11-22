@@ -18,6 +18,8 @@ struct RootView: View {
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
     @State private var resumeDismissed = false
+    /// The selected plane just landed or took off: a short banner.
+    @State private var selectedEvent: AirportEvent?
     /// Callsign of a plane picked from the worldwide search, shown while it loads.
     @State private var pendingTitle: String?
 
@@ -102,6 +104,16 @@ struct RootView: View {
                     FirstRunTip { seenTip = true }
                         .transition(.opacity)
                 }
+                if let event = selectedEvent {
+                    Label(event.text, systemImage: event.kind == .departure ? "airplane.departure" : "airplane.arrival")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(event.kind == .departure ? Theme.amber : Theme.cyan)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .panel()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 if selectedPlane == nil, let id = selectedPlaneID {
                     // Picked from the worldwide search: its area is loading.
                     HStack(spacing: 8) {
@@ -167,6 +179,16 @@ struct RootView: View {
         .onChange(of: selectedPlaneID) { _, _ in following = false }
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
+        .sensoryFeedback(.impact, trigger: selectedEvent?.id) { _, new in new != nil }
+        .onChange(of: traffic.events.first?.id) { _, _ in
+            // The plane you're watching touched down or lifted off.
+            guard let event = traffic.events.first, event.planeID == selectedPlaneID else { return }
+            withAnimation { selectedEvent = event }
+            Task {
+                try? await Task.sleep(for: .seconds(8))
+                if selectedEvent?.id == event.id { withAnimation { selectedEvent = nil } }
+            }
+        }
         .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
         .onChange(of: selectedPlaneID) { _, new in
             // Picked something else (or closed the card): stop polling around a pinned plane.

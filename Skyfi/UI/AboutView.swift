@@ -32,6 +32,16 @@ struct AboutView: View {
                 Text("Altitude colors: orange near the ground, then yellow, green, blue and violet up high. Planes on approach, on the ground or squawking an emergency keep their own colors. Keeping the screen on uses more battery; plug in for long sessions.")
             }
 
+            Section {
+                siriRow("Connect to BOS in Skyfi")
+                siriRow("Weather at BOS in Skyfi")
+                siriRow("Pause Skyfi")
+            } header: {
+                Text("Siri and Shortcuts")
+            } footer: {
+                Text("Also in the Shortcuts app. Links like skyfi://connect/BOS open an airport too (share one from any airport card).")
+            }
+
             Section("Credits") {
                 credit("Tower audio", "LiveATC.net, through its own player", "https://www.liveatc.net")
                 credit("Planes", "adsb.lol (ODbL), adsb.fi as a fallback", "https://adsb.lol")
@@ -54,6 +64,12 @@ struct AboutView: View {
         .confirmationDialog("Clear your starred and recent airports?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Clear", role: .destructive) { places.clearAll() }
         }
+    }
+
+    private func siriRow(_ phrase: String) -> some View {
+        Label("“" + phrase + "”", systemImage: "mic.fill")
+            .font(.system(size: 14))
+            .foregroundStyle(Theme.text)
     }
 
     private func credit(_ title: String, _ detail: String, _ link: String) -> some View {
