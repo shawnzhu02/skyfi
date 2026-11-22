@@ -60,7 +60,8 @@ struct RootView: View {
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
-    var body: some View {
+    /// The map and everything over it.
+    private var layout: some View {
         ZStack(alignment: .bottom) {
             GlobeView(planes: traffic.planes, tunedAirport: mixer.airport,
                       talking: talk.talking, favorites: Places.shared.favorites,
@@ -83,78 +84,7 @@ struct RootView: View {
                     }
                 }
                 Spacer()
-                if let plane = traffic.emergencyPlane, let kind = plane.emergency {
-                    Button { pick(planeID: plane.id) } label: {
-                        Label("\(plane.title) squawking \(plane.squawk ?? "") · \(kind)", systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.red.opacity(0.85), in: Capsule())
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                if seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
-                   let icao = Places.shared.recents.first, let airport = AirportIndex.shared.airport(icao: icao) {
-                    ResumeChip(airport: airport, music: mixer.lastMusicTitle,
-                               note: mixer.towerInBrowser ? "Then tap play on LiveATC's page" : "Where you left off") {
-                        resumeDismissed = true
-                        // Works for airports without a Skyfi feed list too (LiveATC's airport page).
-                        mixer.connectViaLiveATC(airport)
-                        Task { await mixer.playLastMusic() }
-                    } onClose: {
-                        resumeDismissed = true
-                    }
-                    .transition(.opacity)
-                }
-                if !seenTip, traffic.connected == nil, selectedPlane == nil {
-                    FirstRunTip { seenTip = true }
-                        .transition(.opacity)
-                }
-                if let notice {
-                    Label(notice, systemImage: "info.circle.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Theme.cyan)
-                        .lineLimit(1)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .panel()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.opacity)
-                }
-                if let event = selectedEvent {
-                    Label(event.text, systemImage: event.kind == .departure ? "airplane.departure" : "airplane.arrival")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(event.kind == .departure ? Theme.amber : Theme.cyan)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .panel()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                if selectedPlane == nil, let id = selectedPlaneID {
-                    // Picked from the worldwide search: its area is loading.
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Finding \(pendingTitle ?? id.uppercased())…").font(.system(size: 13)).foregroundStyle(Theme.text)
-                        Spacer()
-                        Button { selectedPlaneID = nil } label: {
-                            Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
-                        }
-                        .accessibilityLabel("Cancel")
-                    }
-                    .padding(12)
-                    .panel()
-                    .task(id: id) {
-                        // Not in the feed after 20 s: give up quietly.
-                        try? await Task.sleep(for: .seconds(20))
-                        if !Task.isCancelled, selectedPlaneID == id, selectedPlane == nil {
-                            dlog("traffic", "\(id) not found after 20 s")
-                            selectedPlaneID = nil
-                        }
-                    }
-                }
+                banners
                 if let plane = selectedPlane {
                     PlaneCard(plane: plane, following: $following, onAirport: { selectedAirport = $0 }) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -180,6 +110,87 @@ struct RootView: View {
             }
         }
         .background(Theme.background)
+    }
+
+    /// Banners above the plane card: emergency, resume, tip, notices, the finding-flight row.
+    @ViewBuilder private var banners: some View {
+        if let plane = traffic.emergencyPlane, let kind = plane.emergency {
+            Button { pick(planeID: plane.id) } label: {
+                Label("\(plane.title) squawking \(plane.squawk ?? "") · \(kind)", systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.85), in: Capsule())
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        if seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
+           let icao = Places.shared.recents.first, let airport = AirportIndex.shared.airport(icao: icao) {
+            ResumeChip(airport: airport, music: mixer.lastMusicTitle,
+                       note: mixer.towerInBrowser ? "Then tap play on LiveATC's page" : "Where you left off") {
+                resumeDismissed = true
+                // Works for airports without a Skyfi feed list too (LiveATC's airport page).
+                mixer.connectViaLiveATC(airport)
+                Task { await mixer.playLastMusic() }
+            } onClose: {
+                resumeDismissed = true
+            }
+            .transition(.opacity)
+        }
+        if !seenTip, traffic.connected == nil, selectedPlane == nil {
+            FirstRunTip { seenTip = true }
+                .transition(.opacity)
+        }
+        if let notice {
+            Label(notice, systemImage: "info.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.cyan)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .panel()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.opacity)
+        }
+        if let event = selectedEvent {
+            Label(event.text, systemImage: event.kind == .departure ? "airplane.departure" : "airplane.arrival")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(event.kind == .departure ? Theme.amber : Theme.cyan)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .panel()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+        if selectedPlane == nil, let id = selectedPlaneID {
+            // Picked from the worldwide search: its area is loading.
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Finding \(pendingTitle ?? id.uppercased())…").font(.system(size: 13)).foregroundStyle(Theme.text)
+                Spacer()
+                Button { selectedPlaneID = nil } label: {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.muted)
+                }
+                .accessibilityLabel("Cancel")
+            }
+            .padding(12)
+            .panel()
+            .task(id: id) {
+                // Not in the feed after 20 s: give up quietly.
+                try? await Task.sleep(for: .seconds(20))
+                if !Task.isCancelled, selectedPlaneID == id, selectedPlane == nil {
+                    dlog("traffic", "\(id) not found after 20 s")
+                    selectedPlaneID = nil
+                }
+            }
+        }
+    }
+
+    /// State changes the view reacts to (kept apart so the compiler can type-check the body).
+    private func observed(_ view: some View) -> some View {
+        view
         .onAppear {
             traffic.setActive(true)
             // A shortcut may have connected before this view was watching.
@@ -226,6 +237,10 @@ struct RootView: View {
                 if selectedEvent?.id == event.id { withAnimation { selectedEvent = nil } }
             }
         }
+    }
+
+    private func observedMore(_ view: some View) -> some View {
+        view
         .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
         .onChange(of: selectedPlaneID) { _, new in
             // Picked something else (or closed the card): stop polling around a pinned plane.
@@ -259,6 +274,10 @@ struct RootView: View {
                 selectedAirport = nearest.airport
             }
         }
+    }
+
+    var body: some View {
+        observedMore(observed(layout))
         .alert("Location is off for Skyfi", isPresented: $locationDenied) {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
