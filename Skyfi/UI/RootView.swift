@@ -101,6 +101,7 @@ struct RootView: View {
             guard let icao = traffic.connected?.icao else { return }
             while !Task.isCancelled {
                 await WeatherStore.shared.refresh(icao)
+                await ATISStore.shared.refresh(icao)
                 try? await Task.sleep(for: .seconds(300))
             }
         }
@@ -180,6 +181,12 @@ struct RootView: View {
                         Text(metar.category.rawValue).font(Theme.mono(10, .bold))
                             .foregroundStyle(WeatherSection.color(metar.category))
                         Text(metar.windText).font(Theme.mono(10)).foregroundStyle(Theme.muted)
+                        let atis = ATISStore.shared.atis(airport.icao)
+                        let runways = ATIS.runways(in: atis, airport: airport)
+                        if let code = atis.first?.code, !code.isEmpty {
+                            Text("ATIS \(code)\(runways.landing.first.map { " · \($0)" } ?? "")")
+                                .font(Theme.mono(10)).foregroundStyle(Theme.cyan)
+                        }
                     }
                 }
                 if traffic.connected == nil {
