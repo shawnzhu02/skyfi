@@ -197,7 +197,10 @@ struct MixerSheet: View {
             Text("Airport")
         } footer: {
             HStack(spacing: 16) {
-                NavigationLink("Check feeds") { FeedCheckView() }
+                // Checks Skyfi's own player, which only matters with the LiveATC player off.
+                if !mixer.towerInBrowser {
+                    NavigationLink("Check feeds") { FeedCheckView() }
+                }
                 NavigationLink("Debug log") { DebugLogView() }
                 NavigationLink("About") { AboutView() }
             }
