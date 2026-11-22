@@ -8,15 +8,30 @@ enum MapLook: String, CaseIterable {
     var label: String { self == .satellite ? "Satellite" : "Night" }
 }
 
+/// Where the map should move next: a center, and optionally a zoom (latitude span in degrees).
+struct MapFocus: Equatable {
+    var center: CLLocationCoordinate2D
+    var spanDegrees: Double?
+
+    init(_ center: CLLocationCoordinate2D, spanDegrees: Double? = nil) {
+        self.center = center
+        self.spanDegrees = spanDegrees
+    }
+
+    static func == (a: MapFocus, b: MapFocus) -> Bool {
+        a.center.latitude == b.center.latitude && a.center.longitude == b.center.longitude && a.spanDegrees == b.spanDegrees
+    }
+}
+
 /// The 3D globe. MapKit draws a real globe when zoomed out with the satellite/hybrid configurations.
 struct GlobeView: UIViewRepresentable {
-    let traffic: TrafficStore
     let planes: [String: Plane]
+    /// The connected airport (ICAO): highlighted, with its 60 nm range ring.
     let tunedAirport: String?
     let look: MapLook
     @Binding var selectedPlaneID: String?
     @Binding var selectedAirport: Airport?
-    @Binding var focus: CLLocationCoordinate2D?
+    @Binding var focus: MapFocus?
     var onCenterChange: (CLLocationCoordinate2D) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -32,9 +47,9 @@ struct GlobeView: UIViewRepresentable {
         map.isPitchEnabled = true
         map.isRotateEnabled = true
         apply(look, to: map)
-        // Start over Boston at a regional zoom; pinch out for the globe.
-        let start = CLLocationCoordinate2D(latitude: 42.36, longitude: -71.0)
-        map.setRegion(MKCoordinateRegion(center: start, span: MKCoordinateSpan(latitudeDelta: 3, longitudeDelta: 3)), animated: false)
+        // Start over the US with every connectable airport in view; pinch out for the globe.
+        let start = CLLocationCoordinate2D(latitude: 38.5, longitude: -97)
+        map.setRegion(MKCoordinateRegion(center: start, span: MKCoordinateSpan(latitudeDelta: 30, longitudeDelta: 45)), animated: false)
         context.coordinator.map = map
         context.coordinator.startTicker()
         return map
@@ -48,7 +63,12 @@ struct GlobeView: UIViewRepresentable {
             apply(look, to: map)
         }
         if let focus {
-            map.setCenter(focus, animated: true)
+            if let span = focus.spanDegrees {
+                let region = MKCoordinateRegion(center: focus.center, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span))
+                map.setRegion(map.regionThatFits(region), animated: true)
+            } else {
+                map.setCenter(focus.center, animated: true)
+            }
             DispatchQueue.main.async { self.focus = nil }
         }
         coordinator.sync()
@@ -81,6 +101,8 @@ struct GlobeView: UIViewRepresentable {
         private var ticker: Timer?
         private var appObservers: [NSObjectProtocol] = []
         private var lastAirportRegion: MKCoordinateRegion?
+        private var lastTuned: String?
+        private var rangeRing: MKCircle?
 
         static let maxPlanes = 1500
         static let labelSpan = 1.2
@@ -131,7 +153,22 @@ struct GlobeView: UIViewRepresentable {
         func sync() {
             guard let map else { return }
             syncPlanes(map)
-            syncAirports(map, force: false)
+            let tunedChanged = parent.tunedAirport != lastTuned
+            if tunedChanged {
+                lastTuned = parent.tunedAirport
+                syncRangeRing(map)
+            }
+            syncAirports(map, force: tunedChanged)
+        }
+
+        /// A faint ring showing the 60 nm the connected airport's planes come from.
+        private func syncRangeRing(_ map: MKMapView) {
+            if let ring = rangeRing { map.removeOverlay(ring) }
+            rangeRing = nil
+            guard let icao = parent.tunedAirport, let airport = AirportIndex.shared.airport(icao: icao) else { return }
+            let ring = MKCircle(center: airport.coordinate, radius: Double(TrafficStore.rangeNM) * 1852)
+            rangeRing = ring
+            map.addOverlay(ring, level: .aboveRoads)
         }
 
         private func visibleRect(_ map: MKMapView) -> MKMapRect {
@@ -191,19 +228,18 @@ struct GlobeView: UIViewRepresentable {
             }
             lastAirportRegion = region
             let span = region.span
-            let includeMedium = span.latitudeDelta < 6
+            // Other big airports, for orientation, only when zoomed in.
             let minLon = region.center.longitude - span.longitudeDelta / 2
             let maxLon = region.center.longitude + span.longitudeDelta / 2
-            let airports = span.latitudeDelta > 60 ? [] : AirportIndex.shared.airports(
+            var airports = span.latitudeDelta > 8 ? [] : AirportIndex.shared.airports(
                 minLat: region.center.latitude - span.latitudeDelta / 2,
                 maxLat: region.center.latitude + span.latitudeDelta / 2,
                 minLon: minLon < -180 ? minLon + 360 : minLon,
                 maxLon: maxLon > 180 ? maxLon - 360 : maxLon,
-                includeMedium: includeMedium, limit: 250)
-            var wanted = Dictionary(airports.map { ($0.icao, $0) }, uniquingKeysWith: { a, _ in a })
-            if let tuned = parent.tunedAirport, let airport = AirportIndex.shared.airport(icao: tuned) {
-                wanted[tuned] = airport
-            }
+                includeMedium: false, limit: 150)
+            // Airports you can connect to are always on the map, at any zoom.
+            airports += Catalog.connectable.compactMap { AirportIndex.shared.airport(icao: $0) }
+            let wanted = Dictionary(airports.map { ($0.icao, $0) }, uniquingKeysWith: { a, _ in a })
             let gone = airportAnnotations.filter { wanted[$0.key] == nil }
             if !gone.isEmpty {
                 map.removeAnnotations(Array(gone.values))
@@ -213,7 +249,7 @@ struct GlobeView: UIViewRepresentable {
             for (icao, airport) in wanted {
                 if let existing = airportAnnotations[icao] {
                     if let view = map.view(for: existing) as? AirportAnnotationView {
-                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: Catalog.feed(at: icao) != nil)
+                        view.configure(airport: airport, tuned: icao == parent.tunedAirport, hasFeed: Catalog.connectable.contains(icao))
                     }
                 } else {
                     let annotation = AirportAnnotation(airport)
@@ -249,10 +285,20 @@ struct GlobeView: UIViewRepresentable {
             if let airport = annotation as? AirportAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: AirportAnnotationView.reuseID, for: airport) as! AirportAnnotationView
                 view.configure(airport: airport.airport, tuned: airport.airport.icao == parent.tunedAirport,
-                               hasFeed: Catalog.feed(at: airport.airport.icao) != nil)
+                               hasFeed: Catalog.connectable.contains(airport.airport.icao))
                 return view
             }
             return nil
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }
+            let renderer = MKCircleRenderer(circle: circle)
+            renderer.strokeColor = Theme.uiCyan.withAlphaComponent(0.55)
+            renderer.fillColor = Theme.uiCyan.withAlphaComponent(0.05)
+            renderer.lineWidth = 1.5
+            renderer.lineDashPattern = [6, 6]
+            return renderer
         }
 
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
@@ -266,10 +312,7 @@ struct GlobeView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            let region = mapView.region
-            parent.traffic.setVisibleRegion(center: region.center, latDelta: region.span.latitudeDelta,
-                                            lonDelta: region.span.longitudeDelta)
-            parent.onCenterChange(region.center)
+            parent.onCenterChange(mapView.region.center)
             syncAirports(mapView, force: false)
             syncPlanes(mapView)
             // Labels and headings depend on zoom and rotation.

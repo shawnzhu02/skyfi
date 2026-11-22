@@ -2,9 +2,10 @@ import CoreLocation
 import Foundation
 import Observation
 
-/// The live traffic picture: polls the ADS-B feeds around the major airports in view
-/// (not the whole map, to keep requests small), merges planes by ICAO hex, and turns
-/// ground/air changes into airport events.
+/// The live traffic picture for the airport you're connected to: polls one 60 nm circle
+/// around it, keeps the planes its tower, approach or departure could be talking to,
+/// and turns ground/air changes into takeoff and landing events. Nothing is polled
+/// until you connect.
 @Observable
 @MainActor
 final class TrafficStore {
@@ -19,10 +20,8 @@ final class TrafficStore {
     private(set) var lastUpdate: Date?
     private(set) var provider: ADSBClient.Provider = .adsbLol
     private(set) var failing = false
-    /// True when more major airports are in view than Skyfi polls at once.
-    private(set) var limitedCoverage = false
-    /// False when no major airport is in view, so no planes are shown.
-    private(set) var watchingAirports = true
+    /// The airport whose planes are shown, or nil (no planes, no requests).
+    private(set) var connected: Airport?
 
     @ObservationIgnored private var tiles: [Tile] = []
     @ObservationIgnored private var tileFetched: [Tile: Date] = [:]
@@ -33,11 +32,12 @@ final class TrafficStore {
     @ObservationIgnored private let index: AirportIndex
     @ObservationIgnored private var errorsInRow = 0
 
-    /// Covers final approach, the initial climb and the 30 nm "approaching" window.
-    nonisolated static let airportRadiusNM = 30
-    /// Airports this close share one query circle (JFK, LGA and EWR are one).
-    nonisolated static let mergeNM = 25.0
-    nonisolated static let maxTiles = 8
+    /// Roughly where an airport's approach and departure controllers work.
+    nonisolated static let rangeNM = 60
+    /// Above this the plane is with Center, not the airport's controllers.
+    nonisolated static let maxAGL = 18_000
+    /// Planes on the ground further than this from the airport are at another field.
+    nonisolated static let groundNM = 3.0
     static let requestGap: Duration = .milliseconds(1200)
     static let minTileAge: TimeInterval = 5
     static let staleAfter: TimeInterval = 60
@@ -101,51 +101,26 @@ final class TrafficStore {
         }
     }
 
-    /// Called by the globe whenever the visible region settles.
-    func setVisibleRegion(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double) {
-        let (newTiles, limited) = Self.makeTiles(center: center, latDelta: latDelta, lonDelta: lonDelta, index: index)
-        limitedCoverage = limited
-        watchingAirports = !newTiles.isEmpty
-        guard newTiles != tiles else { return }
-        tiles = newTiles
-        // Keep fetch times for airports still in view, so panning doesn't refetch them.
-        tileFetched = tileFetched.filter { newTiles.contains($0.key) }
+    /// Connects to an airport (or disconnects with nil). Only this airport is polled.
+    func connect(_ airport: Airport?) {
+        guard airport?.icao != connected?.icao else { return }
+        connected = airport
+        tiles = airport.map { [Tile(lat: $0.lat, lon: $0.lon, radiusNM: Self.rangeNM)] } ?? []
+        tileFetched = [:]
         nextTile = 0
-        // Planes near airports that left the view go now, not after the 60 s stale timeout.
-        planes = planes.filter { Self.covered(lat: $0.value.lat, lon: $0.value.lon, by: newTiles) }
+        planes = [:]
+        errorsInRow = 0
+        failing = false
     }
 
-    nonisolated static func covered(lat: Double, lon: Double, by tiles: [Tile]) -> Bool {
-        tiles.contains { Geo.distanceNM(lat, lon, $0.lat, $0.lon) <= Double($0.radiusNM) + 5 }
-    }
-
-    /// One 30 nm query circle per major airport in view, nearest the middle first; airports within
-    /// 25 nm of one already chosen widen that circle instead. Beyond 8 circles the rest wait for a zoom.
-    nonisolated static func makeTiles(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double,
-                                      index: AirportIndex) -> ([Tile], Bool) {
-        let halfLat = min(latDelta, 170) / 2
-        let lonSpan = min(lonDelta, 360)
-        let wrap = { (lon: Double) in (lon + 540).truncatingRemainder(dividingBy: 360) - 180 }
-        let minLon = lonSpan >= 359 ? -180 : wrap(center.longitude - lonSpan / 2)
-        let maxLon = lonSpan >= 359 ? 180 : wrap(center.longitude + lonSpan / 2)
-        let airports = index.airports(minLat: max(center.latitude - halfLat, -90), maxLat: min(center.latitude + halfLat, 90),
-                                      minLon: minLon, maxLon: maxLon, includeMedium: false, limit: 5000)
-            .map { ($0, Geo.distanceNM($0.lat, $0.lon, center.latitude, center.longitude)) }
-            .sorted { $0.1 < $1.1 }
-            .map(\.0)
-        var tiles: [Tile] = []
-        for airport in airports {
-            if let i = tiles.firstIndex(where: { Geo.distanceNM($0.lat, $0.lon, airport.lat, airport.lon) <= mergeNM }) {
-                let need = Int((Geo.distanceNM(tiles[i].lat, tiles[i].lon, airport.lat, airport.lon) + Double(airportRadiusNM)).rounded(.up))
-                if need > tiles[i].radiusNM {
-                    tiles[i] = Tile(lat: tiles[i].lat, lon: tiles[i].lon, radiusNM: min(need, 60))
-                }
-                continue
-            }
-            if tiles.count == maxTiles { return (tiles, true) }
-            tiles.append(Tile(lat: airport.lat, lon: airport.lon, radiusNM: airportRadiusNM))
-        }
-        return (tiles, false)
+    /// Planes the airport's tower, approach or departure could be talking to: on the ground at the
+    /// airport, or in the air within 60 nm and below 18,000 ft above it. Unknown altitude is kept.
+    nonisolated static func inRange(_ plane: Plane, of airport: Airport) -> Bool {
+        let distance = Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon)
+        if plane.onGround { return distance <= groundNM }
+        guard distance <= Double(rangeNM) else { return false }
+        guard let altitude = plane.altitude else { return true }
+        return altitude - airport.elev <= maxAGL
     }
 
     // MARK: Merge
@@ -154,6 +129,11 @@ final class TrafficStore {
         var updated = planes
         for a in aircraft {
             guard var plane = Plane(a, now: now) else { continue }
+            if let connected, !Self.inRange(plane, of: connected) {
+                // Left the airport's airspace (or never in it): drop it from the picture.
+                updated[plane.id] = nil
+                continue
+            }
             if let previous = updated[plane.id] {
                 // Keep fields a partial report leaves out.
                 plane.callsign = plane.callsign ?? previous.callsign

@@ -21,7 +21,7 @@ struct MixerBar: View {
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
-                        Text(mixer.feed.map { "+ \($0.name)" } ?? "Tune a tower from any airport")
+                        Text(mixer.feed.map { "+ \($0.name)" } ?? "Tap an airport to connect")
                             .font(.system(size: 11))
                             .foregroundStyle(mixer.feed == nil ? Theme.muted : Theme.cyan)
                             .lineLimit(1)
@@ -104,26 +104,30 @@ struct MixerSheet: View {
                     }
                 }
 
-                Section("Tower audio") {
+                Section("Airport") {
                     if let feed = mixer.feed {
                         nowPlaying(title: feed.name, subtitle: "LiveATC · \(feed.airport)", status: mixer.atcStatus,
-                                   tint: Theme.cyan, onStop: mixer.stopATC)
+                                   tint: Theme.cyan, onStop: mixer.disconnect)
                         slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
                     }
-                    ForEach(Catalog.feeds(near: center).prefix(12)) { item in
-                        Button { mixer.tune(item.feed) } label: {
+                    ForEach(Catalog.airports(near: center).prefix(12)) { item in
+                        Button { mixer.connect(item.airport) } label: {
                             HStack {
-                                Image(systemName: mixer.feed == item.feed ? "headphones.circle.fill" : "headphones")
+                                Image(systemName: mixer.airport == item.airport.icao ? "headphones.circle.fill" : "headphones")
                                     .foregroundStyle(Theme.cyan)
                                     .frame(width: 24)
-                                Text(item.feed.name).foregroundStyle(Theme.text)
-                                Spacer()
-                                if item.distanceNM.isFinite {
-                                    Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(item.airport.code).font(Theme.mono(14, .bold)).foregroundStyle(Theme.text)
+                                    Text(item.airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                                 }
+                                Spacer()
+                                Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
                             }
                         }
                     }
+                } footer: {
+                    NavigationLink("Check feeds (debug)") { FeedCheckView() }
+                        .font(.system(size: 12))
                 }
 
                 if mixer.music != nil && mixer.feed != nil {

@@ -17,7 +17,8 @@ struct Preset: Codable, Identifiable, Hashable {
 }
 
 /// A LiveATC feed. `mount` is the LiveATC mount point (for example `kbos_twr`).
-/// Skyfi carries one feed per airport: the tower, or approach/departure where there's no tower feed.
+/// An airport has up to three: tower, approach, departure. Connecting plays one at a time,
+/// tower first, and moves to the next only when one is offline (see `FeedChain`).
 struct ATCFeed: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
         case tower
@@ -29,6 +30,14 @@ struct ATCFeed: Codable, Identifiable, Hashable {
             case .tower: return 0
             case .approach: return 1
             case .departure: return 2
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .tower: return "Tower"
+            case .approach: return "Approach"
+            case .departure: return "Departure"
             }
         }
     }
@@ -45,15 +54,13 @@ struct ATCFeed: Codable, Identifiable, Hashable {
 /// Presets and feeds bundled with the app.
 enum Catalog {
     static let presets: [Preset] = load("presets")
-    /// One feed per airport, best kind first (tower, then approach, then departure).
-    static let feeds: [ATCFeed] = {
-        let all: [ATCFeed] = load("feeds")
-        var best: [String: ATCFeed] = [:]
-        for feed in all where feed.kind.rank < (best[feed.airport]?.kind.rank ?? .max) {
-            best[feed.airport] = feed
-        }
-        return all.filter { best[$0.airport] == $0 }
-    }()
+    /// Every mount, built by scripts/build_feeds.py.
+    static let feeds: [ATCFeed] = load("feeds")
+    /// Candidates per airport, tower first.
+    private static let byAirport: [String: [ATCFeed]] = Dictionary(grouping: feeds, by: \.airport)
+        .mapValues { $0.sorted { $0.kind.rank < $1.kind.rank } }
+    /// ICAO codes of the airports you can connect to.
+    static let connectable: Set<String> = Set(byAirport.keys)
 
     private static func load<T: Decodable>(_ name: String) -> [T] {
         guard let url = Bundle.main.url(forResource: name, withExtension: "json"),
@@ -62,26 +69,68 @@ enum Catalog {
         return items
     }
 
-    static func feed(at icao: String) -> ATCFeed? {
-        feeds.first { $0.airport == icao }
+    /// The airport's feeds in the order Skyfi tries them: tower, approach, departure.
+    static func feeds(at icao: String) -> [ATCFeed] {
+        byAirport[icao] ?? []
     }
 
-    struct NearbyFeed: Identifiable {
-        let feed: ATCFeed
-        let airport: Airport?
+    /// The first feed Skyfi tries at this airport.
+    static func feed(at icao: String) -> ATCFeed? {
+        feeds(at: icao).first
+    }
+
+    struct NearbyAirport: Identifiable {
+        let airport: Airport
         let distanceNM: Double
 
-        var id: String { feed.id }
+        var id: String { airport.icao }
     }
 
-    /// Feeds sorted by the distance of their airport from `point`.
-    static func feeds(near point: CLLocationCoordinate2D, index: AirportIndex = .shared) -> [NearbyFeed] {
-        feeds.map { feed in
-            let airport = index.airport(icao: feed.airport)
-            let distance = airport.map { Geo.distanceNM(point.latitude, point.longitude, $0.lat, $0.lon) } ?? .infinity
-            return NearbyFeed(feed: feed, airport: airport, distanceNM: distance)
+    /// Connectable airports sorted by distance from `point`.
+    static func airports(near point: CLLocationCoordinate2D, index: AirportIndex = .shared) -> [NearbyAirport] {
+        connectable.compactMap { index.airport(icao: $0) }
+            .map { NearbyAirport(airport: $0, distanceNM: Geo.distanceNM(point.latitude, point.longitude, $0.lat, $0.lon)) }
+            .sorted { $0.distanceNM < $1.distanceNM }
+    }
+}
+
+/// The order Skyfi works through an airport's feeds. Only one plays at a time: before any of
+/// them has played, an offline one hands over to the next; once one has played, a drop retries
+/// that same one (it's the right frequency and LiveATC streams blip).
+struct FeedChain: Equatable {
+    enum Outcome: Equatable {
+        /// Try `current` now: it's the next candidate.
+        case next
+        /// Retry `current` after a backoff.
+        case retrySame
+        /// Every candidate failed; `current` is the first again, retry after a backoff.
+        case exhausted
+    }
+
+    let airport: String
+    let candidates: [ATCFeed]
+    private(set) var index = 0
+    private(set) var played = false
+
+    init(airport: String, candidates: [ATCFeed]) {
+        self.airport = airport
+        self.candidates = candidates
+    }
+
+    var current: ATCFeed? { candidates.indices.contains(index) ? candidates[index] : nil }
+
+    mutating func markPlayed() {
+        played = true
+    }
+
+    mutating func failed() -> Outcome {
+        if played { return .retrySame }
+        if index + 1 < candidates.count {
+            index += 1
+            return .next
         }
-        .sorted { $0.distanceNM < $1.distanceNM }
+        index = 0
+        return .exhausted
     }
 }
 

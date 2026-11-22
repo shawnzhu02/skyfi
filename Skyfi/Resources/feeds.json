@@ -1,87 +1,21 @@
 [
  {
-  "mount": "kbos_twr",
-  "airport": "KBOS",
-  "name": "Boston Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kjfk_twr",
-  "airport": "KJFK",
-  "name": "New York JFK Tower",
-  "kind": "tower"
- },
- {
-  "mount": "klga_twr",
-  "airport": "KLGA",
-  "name": "LaGuardia Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kewr_twr",
-  "airport": "KEWR",
-  "name": "Newark Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kphl_twr",
-  "airport": "KPHL",
-  "name": "Philadelphia Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kdca_twr",
-  "airport": "KDCA",
-  "name": "Washington National Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kiad_twr",
-  "airport": "KIAD",
-  "name": "Washington Dulles Tower",
-  "kind": "tower"
- },
- {
   "mount": "katl_twr",
   "airport": "KATL",
   "name": "Atlanta Tower",
   "kind": "tower"
  },
  {
-  "mount": "kclt_twr",
-  "airport": "KCLT",
-  "name": "Charlotte Tower",
-  "kind": "tower"
+  "mount": "katl_app",
+  "airport": "KATL",
+  "name": "Atlanta Approach",
+  "kind": "approach"
  },
  {
-  "mount": "kmco_twr",
-  "airport": "KMCO",
-  "name": "Orlando Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kmia_twr",
-  "airport": "KMIA",
-  "name": "Miami Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kord_twr",
-  "airport": "KORD",
-  "name": "Chicago O'Hare Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kdtw_twr",
-  "airport": "KDTW",
-  "name": "Detroit Tower",
-  "kind": "tower"
- },
- {
-  "mount": "kmsp_twr",
-  "airport": "KMSP",
-  "name": "Minneapolis Tower",
-  "kind": "tower"
+  "mount": "katl_dep",
+  "airport": "KATL",
+  "name": "Atlanta Departure",
+  "kind": "departure"
  },
  {
   "mount": "kdfw_twr",
@@ -90,10 +24,16 @@
   "kind": "tower"
  },
  {
-  "mount": "kiah_twr",
-  "airport": "KIAH",
-  "name": "Houston Tower",
-  "kind": "tower"
+  "mount": "kdfw_app",
+  "airport": "KDFW",
+  "name": "Dallas/Fort Worth Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kdfw_dep",
+  "airport": "KDFW",
+  "name": "Dallas/Fort Worth Departure",
+  "kind": "departure"
  },
  {
   "mount": "kden_twr",
@@ -102,16 +42,34 @@
   "kind": "tower"
  },
  {
-  "mount": "kphx_twr",
-  "airport": "KPHX",
-  "name": "Phoenix Tower",
+  "mount": "kden_app",
+  "airport": "KDEN",
+  "name": "Denver Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kden_dep",
+  "airport": "KDEN",
+  "name": "Denver Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kord_twr",
+  "airport": "KORD",
+  "name": "Chicago O'Hare Tower",
   "kind": "tower"
  },
  {
-  "mount": "klas_twr",
-  "airport": "KLAS",
-  "name": "Las Vegas Tower",
-  "kind": "tower"
+  "mount": "kord_app",
+  "airport": "KORD",
+  "name": "Chicago O'Hare Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kord_dep",
+  "airport": "KORD",
+  "name": "Chicago O'Hare Departure",
+  "kind": "departure"
  },
  {
   "mount": "klax_twr",
@@ -120,10 +78,160 @@
   "kind": "tower"
  },
  {
-  "mount": "ksan_twr",
-  "airport": "KSAN",
-  "name": "San Diego Tower",
+  "mount": "klax_app",
+  "airport": "KLAX",
+  "name": "Los Angeles Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "klax_dep",
+  "airport": "KLAX",
+  "name": "Los Angeles Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kjfk_twr",
+  "airport": "KJFK",
+  "name": "Kennedy Tower",
   "kind": "tower"
+ },
+ {
+  "mount": "kjfk_app",
+  "airport": "KJFK",
+  "name": "Kennedy Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kjfk_dep",
+  "airport": "KJFK",
+  "name": "Kennedy Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "klas_twr",
+  "airport": "KLAS",
+  "name": "Las Vegas Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "klas_app",
+  "airport": "KLAS",
+  "name": "Las Vegas Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "klas_dep",
+  "airport": "KLAS",
+  "name": "Las Vegas Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmco_twr",
+  "airport": "KMCO",
+  "name": "Orlando Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmco_app",
+  "airport": "KMCO",
+  "name": "Orlando Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmco_dep",
+  "airport": "KMCO",
+  "name": "Orlando Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmia_twr",
+  "airport": "KMIA",
+  "name": "Miami Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmia_app",
+  "airport": "KMIA",
+  "name": "Miami Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmia_dep",
+  "airport": "KMIA",
+  "name": "Miami Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kclt_twr",
+  "airport": "KCLT",
+  "name": "Charlotte Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kclt_app",
+  "airport": "KCLT",
+  "name": "Charlotte Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kclt_dep",
+  "airport": "KCLT",
+  "name": "Charlotte Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ksea_twr",
+  "airport": "KSEA",
+  "name": "Seattle Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ksea_app",
+  "airport": "KSEA",
+  "name": "Seattle Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksea_dep",
+  "airport": "KSEA",
+  "name": "Seattle Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kphx_twr",
+  "airport": "KPHX",
+  "name": "Phoenix Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kphx_app",
+  "airport": "KPHX",
+  "name": "Phoenix Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kphx_dep",
+  "airport": "KPHX",
+  "name": "Phoenix Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kewr_twr",
+  "airport": "KEWR",
+  "name": "Newark Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kewr_app",
+  "airport": "KEWR",
+  "name": "Newark Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kewr_dep",
+  "airport": "KEWR",
+  "name": "Newark Departure",
+  "kind": "departure"
  },
  {
   "mount": "ksfo_twr",
@@ -132,16 +240,502 @@
   "kind": "tower"
  },
  {
+  "mount": "ksfo_app",
+  "airport": "KSFO",
+  "name": "San Francisco Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksfo_dep",
+  "airport": "KSFO",
+  "name": "San Francisco Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kiah_twr",
+  "airport": "KIAH",
+  "name": "Houston Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kiah_app",
+  "airport": "KIAH",
+  "name": "Houston Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kiah_dep",
+  "airport": "KIAH",
+  "name": "Houston Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kbos_twr",
+  "airport": "KBOS",
+  "name": "Boston Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kbos_app",
+  "airport": "KBOS",
+  "name": "Boston Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kbos_dep",
+  "airport": "KBOS",
+  "name": "Boston Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kfll_twr",
+  "airport": "KFLL",
+  "name": "Fort Lauderdale Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kfll_app",
+  "airport": "KFLL",
+  "name": "Fort Lauderdale Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kfll_dep",
+  "airport": "KFLL",
+  "name": "Fort Lauderdale Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmsp_twr",
+  "airport": "KMSP",
+  "name": "Minneapolis Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmsp_app",
+  "airport": "KMSP",
+  "name": "Minneapolis Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmsp_dep",
+  "airport": "KMSP",
+  "name": "Minneapolis Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "klga_twr",
+  "airport": "KLGA",
+  "name": "LaGuardia Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "klga_app",
+  "airport": "KLGA",
+  "name": "LaGuardia Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "klga_dep",
+  "airport": "KLGA",
+  "name": "LaGuardia Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kdtw_twr",
+  "airport": "KDTW",
+  "name": "Detroit Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kdtw_app",
+  "airport": "KDTW",
+  "name": "Detroit Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kdtw_dep",
+  "airport": "KDTW",
+  "name": "Detroit Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kphl_twr",
+  "airport": "KPHL",
+  "name": "Philadelphia Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kphl_app",
+  "airport": "KPHL",
+  "name": "Philadelphia Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kphl_dep",
+  "airport": "KPHL",
+  "name": "Philadelphia Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kslc_twr",
+  "airport": "KSLC",
+  "name": "Salt Lake City Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kslc_app",
+  "airport": "KSLC",
+  "name": "Salt Lake City Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kslc_dep",
+  "airport": "KSLC",
+  "name": "Salt Lake City Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kbwi_twr",
+  "airport": "KBWI",
+  "name": "Baltimore Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kbwi_app",
+  "airport": "KBWI",
+  "name": "Baltimore Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kbwi_dep",
+  "airport": "KBWI",
+  "name": "Baltimore Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kdca_twr",
+  "airport": "KDCA",
+  "name": "Washington National Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kdca_app",
+  "airport": "KDCA",
+  "name": "Washington National Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kdca_dep",
+  "airport": "KDCA",
+  "name": "Washington National Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ksan_twr",
+  "airport": "KSAN",
+  "name": "San Diego Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ksan_app",
+  "airport": "KSAN",
+  "name": "San Diego Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksan_dep",
+  "airport": "KSAN",
+  "name": "San Diego Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kiad_twr",
+  "airport": "KIAD",
+  "name": "Dulles Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kiad_app",
+  "airport": "KIAD",
+  "name": "Dulles Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kiad_dep",
+  "airport": "KIAD",
+  "name": "Dulles Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ktpa_twr",
+  "airport": "KTPA",
+  "name": "Tampa Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ktpa_app",
+  "airport": "KTPA",
+  "name": "Tampa Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ktpa_dep",
+  "airport": "KTPA",
+  "name": "Tampa Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kbna_twr",
+  "airport": "KBNA",
+  "name": "Nashville Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kbna_app",
+  "airport": "KBNA",
+  "name": "Nashville Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kbna_dep",
+  "airport": "KBNA",
+  "name": "Nashville Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kaus_twr",
+  "airport": "KAUS",
+  "name": "Austin Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kaus_app",
+  "airport": "KAUS",
+  "name": "Austin Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kaus_dep",
+  "airport": "KAUS",
+  "name": "Austin Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmdw_twr",
+  "airport": "KMDW",
+  "name": "Chicago Midway Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmdw_app",
+  "airport": "KMDW",
+  "name": "Chicago Midway Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmdw_dep",
+  "airport": "KMDW",
+  "name": "Chicago Midway Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "phnl_twr",
+  "airport": "PHNL",
+  "name": "Honolulu Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "phnl_app",
+  "airport": "PHNL",
+  "name": "Honolulu Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "phnl_dep",
+  "airport": "PHNL",
+  "name": "Honolulu Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kdal_twr",
+  "airport": "KDAL",
+  "name": "Dallas Love Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kdal_app",
+  "airport": "KDAL",
+  "name": "Dallas Love Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kdal_dep",
+  "airport": "KDAL",
+  "name": "Dallas Love Departure",
+  "kind": "departure"
+ },
+ {
   "mount": "kpdx_twr",
   "airport": "KPDX",
   "name": "Portland Tower",
   "kind": "tower"
  },
  {
-  "mount": "ksea_twr",
-  "airport": "KSEA",
-  "name": "Seattle Tower",
+  "mount": "kpdx_app",
+  "airport": "KPDX",
+  "name": "Portland Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kpdx_dep",
+  "airport": "KPDX",
+  "name": "Portland Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kstl_twr",
+  "airport": "KSTL",
+  "name": "St. Louis Tower",
   "kind": "tower"
+ },
+ {
+  "mount": "kstl_app",
+  "airport": "KSTL",
+  "name": "St. Louis Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kstl_dep",
+  "airport": "KSTL",
+  "name": "St. Louis Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ksjc_twr",
+  "airport": "KSJC",
+  "name": "San Jose Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ksjc_app",
+  "airport": "KSJC",
+  "name": "San Jose Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksjc_dep",
+  "airport": "KSJC",
+  "name": "San Jose Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "koak_twr",
+  "airport": "KOAK",
+  "name": "Oakland Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "koak_app",
+  "airport": "KOAK",
+  "name": "Oakland Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "koak_dep",
+  "airport": "KOAK",
+  "name": "Oakland Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "krdu_twr",
+  "airport": "KRDU",
+  "name": "Raleigh-Durham Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "krdu_app",
+  "airport": "KRDU",
+  "name": "Raleigh-Durham Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "krdu_dep",
+  "airport": "KRDU",
+  "name": "Raleigh-Durham Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmci_twr",
+  "airport": "KMCI",
+  "name": "Kansas City Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmci_app",
+  "airport": "KMCI",
+  "name": "Kansas City Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmci_dep",
+  "airport": "KMCI",
+  "name": "Kansas City Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ksmf_twr",
+  "airport": "KSMF",
+  "name": "Sacramento Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ksmf_app",
+  "airport": "KSMF",
+  "name": "Sacramento Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksmf_dep",
+  "airport": "KSMF",
+  "name": "Sacramento Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "ksat_twr",
+  "airport": "KSAT",
+  "name": "San Antonio Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "ksat_app",
+  "airport": "KSAT",
+  "name": "San Antonio Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "ksat_dep",
+  "airport": "KSAT",
+  "name": "San Antonio Departure",
+  "kind": "departure"
+ },
+ {
+  "mount": "kmsy_twr",
+  "airport": "KMSY",
+  "name": "New Orleans Tower",
+  "kind": "tower"
+ },
+ {
+  "mount": "kmsy_app",
+  "airport": "KMSY",
+  "name": "New Orleans Approach",
+  "kind": "approach"
+ },
+ {
+  "mount": "kmsy_dep",
+  "airport": "KMSY",
+  "name": "New Orleans Departure",
+  "kind": "departure"
  },
  {
   "mount": "cyyz_twr",
@@ -152,19 +746,19 @@
  {
   "mount": "egll_twr",
   "airport": "EGLL",
-  "name": "London Heathrow Tower",
+  "name": "Heathrow Tower",
   "kind": "tower"
  },
  {
   "mount": "eham_twr",
   "airport": "EHAM",
-  "name": "Amsterdam Tower",
+  "name": "Schiphol Tower",
   "kind": "tower"
  },
  {
   "mount": "rjtt_twr",
   "airport": "RJTT",
-  "name": "Tokyo Haneda Tower",
+  "name": "Haneda Tower",
   "kind": "tower"
  }
 ]

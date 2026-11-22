@@ -104,7 +104,7 @@ final class AirportAnnotationView: MKAnnotationView {
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        frame = CGRect(x: 0, y: 0, width: 44, height: 24)
+        frame = CGRect(x: 0, y: 0, width: 44, height: 28)
         dot.frame = CGRect(x: 18, y: 0, width: 8, height: 8)
         dot.layer.cornerRadius = 4
         dot.layer.borderWidth = 1.5
@@ -128,11 +128,20 @@ final class AirportAnnotationView: MKAnnotationView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// Airports you can connect to get a larger cyan-ringed dot and are always shown;
+    /// the connected one is filled. Others are small grey dots for orientation.
     func configure(airport: Airport, tuned: Bool, hasFeed: Bool) {
         label.text = airport.code
-        dot.backgroundColor = tuned ? Theme.uiCyan : (hasFeed ? UIColor.white.withAlphaComponent(0.5) : .clear)
-        dot.layer.borderColor = (tuned ? Theme.uiCyan : UIColor.white).cgColor
-        label.textColor = tuned ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.85)
-        displayPriority = tuned ? .required : (airport.large ? .defaultHigh : .defaultLow)
+        let size: CGFloat = hasFeed ? 12 : 7
+        dot.frame = CGRect(x: (bounds.width - size) / 2, y: 0, width: size, height: size)
+        dot.layer.cornerRadius = size / 2
+        dot.layer.borderWidth = hasFeed ? 2 : 1
+        dot.backgroundColor = tuned ? Theme.uiCyan : (hasFeed ? Theme.uiCyan.withAlphaComponent(0.25) : UIColor.white.withAlphaComponent(0.35))
+        dot.layer.borderColor = (hasFeed ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.6)).cgColor
+        label.frame = CGRect(x: 0, y: size + 1, width: bounds.width, height: 13)
+        label.font = .monospacedSystemFont(ofSize: hasFeed ? 11 : 9, weight: .bold)
+        label.textColor = tuned || hasFeed ? Theme.uiCyan : UIColor.white.withAlphaComponent(0.6)
+        displayPriority = hasFeed || tuned ? .required : .defaultLow
+        zPriority = hasFeed ? .defaultSelected : .min
     }
 }

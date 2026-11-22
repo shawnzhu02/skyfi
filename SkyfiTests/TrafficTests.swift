@@ -95,9 +95,20 @@ final class AirportTests: XCTestCase {
             XCTAssertNotNil(index.airport(icao: feed.airport), "\(feed.mount) has no airport")
         }
         XCTAssertFalse(Catalog.presets.isEmpty)
-        let airports = Catalog.feeds.map(\.airport)
-        XCTAssertEqual(airports.count, Set(airports).count, "One feed per airport")
+        let mounts = Catalog.feeds.map(\.mount)
+        XCTAssertEqual(mounts.count, Set(mounts).count, "Mounts are unique")
+        XCTAssertEqual(Catalog.feeds(at: "KBOS").map(\.kind), [.tower, .approach, .departure])
         XCTAssertEqual(Catalog.feed(at: "KBOS")?.kind, .tower)
+    }
+
+    func testFortyMajorUSAirports() {
+        let us = Catalog.connectable.filter { $0.hasPrefix("K") || $0.hasPrefix("PH") }
+        XCTAssertGreaterThanOrEqual(us.count, 40)
+        for icao in Catalog.connectable {
+            XCTAssertEqual(index.airport(icao: icao)?.large, true, "\(icao) is a major airport")
+        }
+        let nearBoston = Catalog.airports(near: .init(latitude: 42.36, longitude: -71.0))
+        XCTAssertEqual(nearBoston.first?.airport.icao, "KBOS")
     }
 }
 
@@ -166,40 +177,77 @@ final class EventTests: XCTestCase {
     }
 }
 
-final class TileTests: XCTestCase {
-    func testBostonIsOneAirportCircle() {
-        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 42.36, longitude: -71), latDelta: 1, lonDelta: 1,
-                                                      index: .shared)
-        let kbos = AirportIndex.shared.airport(icao: "KBOS")!
-        XCTAssertFalse(limited)
-        XCTAssertEqual(tiles.count, 1)
-        XCTAssertLessThan(Geo.distanceNM(tiles[0].lat, tiles[0].lon, kbos.lat, kbos.lon), 1)
-        XCTAssertEqual(tiles[0].radiusNM, TrafficStore.airportRadiusNM)
+final class ConnectTests: XCTestCase {
+    let kbos = AirportIndex.shared.airport(icao: "KBOS")!
+
+    private func plane(lat: Double, lon: Double, alt: Int?, ground: Bool = false, hex: String = "abc123") -> Plane {
+        var json: [String: Any] = ["hex": hex, "flight": "DAL234", "lat": lat, "lon": lon, "gs": 150, "track": 40]
+        if ground { json["alt_baro"] = "ground" } else if let alt { json["alt_baro"] = alt }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
     }
 
-    func testNewYorkAirportsShareACircle() {
-        let (tiles, _) = TrafficStore.makeTiles(center: .init(latitude: 40.7, longitude: -73.9), latDelta: 0.8, lonDelta: 0.8,
-                                                index: .shared)
-        XCTAssertLessThanOrEqual(tiles.count, 2)
-        for icao in ["KJFK", "KLGA", "KEWR"] {
-            let airport = AirportIndex.shared.airport(icao: icao)!
-            XCTAssertTrue(TrafficStore.covered(lat: airport.lat, lon: airport.lon, by: tiles), icao)
-        }
+    func testRange() {
+        // On the ground at Logan.
+        XCTAssertTrue(TrafficStore.inRange(plane(lat: kbos.lat + 0.01, lon: kbos.lon, alt: nil, ground: true), of: kbos))
+        // On the ground at Providence (about 40 nm away): another airport's ramp.
+        XCTAssertFalse(TrafficStore.inRange(plane(lat: 41.72, lon: -71.43, alt: nil, ground: true), of: kbos))
+        // Final approach, 2,000 ft.
+        XCTAssertTrue(TrafficStore.inRange(plane(lat: kbos.lat - 0.1, lon: kbos.lon - 0.1, alt: 2000), of: kbos))
+        // Cruising overhead with Center.
+        XCTAssertFalse(TrafficStore.inRange(plane(lat: kbos.lat, lon: kbos.lon + 0.2, alt: 35000), of: kbos))
+        // 70 nm out.
+        XCTAssertFalse(TrafficStore.inRange(plane(lat: kbos.lat + 70.0 / 60, lon: kbos.lon, alt: 8000), of: kbos))
+        // No altitude reported: keep it.
+        XCTAssertTrue(TrafficStore.inRange(plane(lat: kbos.lat + 0.3, lon: kbos.lon, alt: nil), of: kbos))
     }
 
-    func testOpenOceanHasNoCircles() {
-        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 35, longitude: -45), latDelta: 3, lonDelta: 3,
-                                                      index: .shared)
-        XCTAssertTrue(tiles.isEmpty)
-        XCTAssertFalse(limited)
+    @MainActor
+    func testConnectFiltersAndDisconnectClears() {
+        let store = TrafficStore()
+        store.merge([], now: Date())
+        store.connect(kbos)
+        XCTAssertEqual(store.connected?.icao, "KBOS")
+        let close = try! JSONDecoder().decode(ADSBAircraft.self, from: Data("""
+        {"hex":"aaa111","flight":"JBU697","lat":42.30,"lon":-71.05,"alt_baro":3000,"gs":180,"track":40}
+        """.utf8))
+        let cruising = try! JSONDecoder().decode(ADSBAircraft.self, from: Data("""
+        {"hex":"bbb222","flight":"UAL1","lat":42.40,"lon":-71.30,"alt_baro":37000,"gs":480,"track":250}
+        """.utf8))
+        store.merge([close, cruising], now: Date())
+        XCTAssertEqual(Set(store.planes.keys), ["aaa111"])
+        store.connect(nil)
+        XCTAssertNil(store.connected)
+        XCTAssertTrue(store.planes.isEmpty)
+    }
+}
+
+final class FeedChainTests: XCTestCase {
+    private var chain: FeedChain { FeedChain(airport: "KBOS", candidates: Catalog.feeds(at: "KBOS")) }
+
+    func testOfflineTowerFallsBackToApproachThenDeparture() {
+        var c = chain
+        XCTAssertEqual(c.current?.kind, .tower)
+        XCTAssertEqual(c.failed(), .next)
+        XCTAssertEqual(c.current?.kind, .approach)
+        XCTAssertEqual(c.failed(), .next)
+        XCTAssertEqual(c.current?.kind, .departure)
+        XCTAssertEqual(c.failed(), .exhausted)
+        XCTAssertEqual(c.current?.kind, .tower, "Starts over from the tower")
     }
 
-    func testContinentIsCapped() {
-        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 39, longitude: -98), latDelta: 40, lonDelta: 70,
-                                                      index: .shared)
-        XCTAssertEqual(tiles.count, TrafficStore.maxTiles)
-        XCTAssertTrue(limited)
-        XCTAssertTrue(tiles.allSatisfy { $0.radiusNM <= 60 })
+    func testDropAfterPlayingRetriesSameFeed() {
+        var c = chain
+        c.markPlayed()
+        XCTAssertEqual(c.failed(), .retrySame)
+        XCTAssertEqual(c.current?.kind, .tower)
+    }
+
+    func testSingleFeedAirport() {
+        var c = FeedChain(airport: "EGLL", candidates: Catalog.feeds(at: "EGLL"))
+        XCTAssertEqual(c.candidates.count, 1)
+        XCTAssertEqual(c.failed(), .exhausted)
+        XCTAssertEqual(c.current?.mount, "egll_twr")
     }
 }
 

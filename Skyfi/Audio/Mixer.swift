@@ -29,6 +29,9 @@ final class Mixer {
 
     private(set) var music: Music?
     private(set) var musicStatus: Status = .idle
+    /// The airport you're connected to (ICAO). Its planes show on the map.
+    private(set) var airport: String?
+    /// The airport's feed that's on right now (tower, or approach/departure as a fallback).
     private(set) var feed: ATCFeed?
     private(set) var atcStatus: Status = .idle
 
@@ -50,6 +53,7 @@ final class Mixer {
     @ObservationIgnored private var retryTask: [ObjectIdentifier: Task<Void, Never>] = [:]
     @ObservationIgnored private var watchdogs: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var retryCount: [ObjectIdentifier: Int] = [:]
+    @ObservationIgnored private var chain: FeedChain?
     @ObservationIgnored private var backgroundTasks: [ObjectIdentifier: UIBackgroundTaskIdentifier] = [:]
 
     private init() {
@@ -170,7 +174,31 @@ final class Mixer {
 
     // MARK: ATC
 
-    func tune(_ feed: ATCFeed) {
+    /// Connects to an airport: plays its tower (or approach/departure if the tower feed is offline)
+    /// and, through RootView, makes the map show that airport's planes.
+    func connect(_ airport: Airport) {
+        let candidates = Catalog.feeds(at: airport.icao)
+        guard !candidates.isEmpty else { return }
+        if self.airport == airport.icao, !isFailed(atcStatus) { return }
+        cancelRetry(isMusic: false)
+        retryCount[ObjectIdentifier(atcPlayer)] = 0
+        self.airport = airport.icao
+        chain = FeedChain(airport: airport.icao, candidates: candidates)
+        startATC(candidates[0])
+    }
+
+    func disconnect() {
+        cancelRetry(isMusic: false)
+        watchdogs["atc"]?.cancel()
+        chain = nil
+        airport = nil
+        atcPlayer.replaceCurrentItem(with: nil)
+        feed = nil
+        atcStatus = .idle
+        updateNowPlaying()
+    }
+
+    private func startATC(_ feed: ATCFeed) {
         activateSession()
         self.feed = feed
         atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
@@ -180,11 +208,25 @@ final class Mixer {
         updateNowPlaying()
     }
 
-    func stopATC() {
-        atcPlayer.replaceCurrentItem(with: nil)
-        feed = nil
-        atcStatus = .idle
-        updateNowPlaying()
+    /// The current tower item failed, stalled or never started.
+    private func atcFailed() {
+        guard var chain else { return }
+        let outcome = chain.failed()
+        self.chain = chain
+        guard let next = chain.current else { return }
+        switch outcome {
+        case .next:
+            // That mount is offline: move straight on to the airport's next feed.
+            startATC(next)
+        case .retrySame:
+            if atcStatus == .loading { atcStatus = .failed("Feed dropped · reconnecting") }
+            scheduleRetry(isMusic: false)
+        case .exhausted:
+            feed = next
+            atcStatus = .failed("No live feed at \(chain.airport) right now · retrying")
+            updateNowPlaying()
+            scheduleRetry(isMusic: false)
+        }
     }
 
     // MARK: Transport
@@ -289,6 +331,7 @@ final class Mixer {
         case .playing:
             next = .playing
             retryCount[ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)] = 0
+            if !isMusic { chain?.markPlayed() }
         case .waitingToPlayAtSpecifiedRate: next = .loading
         case .paused:
             if failed {
@@ -335,6 +378,22 @@ final class Mixer {
             updateNowPlaying()
             return
         }
+        if isATC {
+            atcFailed()
+            return
+        }
+        scheduleRetry(isMusic: true)
+    }
+
+    private func cancelRetry(isMusic: Bool) {
+        let key = ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)
+        retryTask[key]?.cancel()
+        retryTask[key] = nil
+        endBackgroundTask(key)
+    }
+
+    private func scheduleRetry(isMusic: Bool) {
+        let isATC = !isMusic
         let key = ObjectIdentifier(isMusic ? musicPlayer : atcPlayer)
         guard retryTask[key] == nil else { return }
         let attempt = retryCount[key, default: 0]
@@ -359,9 +418,8 @@ final class Mixer {
                 } else {
                     self.musicPlayer.play()
                 }
-            } else if isATC, let feed = self.feed, self.atcStatus != .paused {
-                self.atcPlayer.replaceCurrentItem(with: AVPlayerItem(url: feed.url))
-                self.atcPlayer.play()
+            } else if isATC, let feed = self.chain?.current ?? self.feed, self.atcStatus != .paused {
+                self.startATC(feed)
             }
         }
     }
@@ -436,7 +494,7 @@ final class Mixer {
             if isMusic, self.musicStatus == .loading {
                 self.musicStatus = .failed("Stream didn't start. Try again or pick another.")
             } else if !isMusic, self.atcStatus == .loading {
-                self.atcStatus = .failed("Feed offline right now. Try another tower.")
+                self.atcFailed()
             }
         }
     }
