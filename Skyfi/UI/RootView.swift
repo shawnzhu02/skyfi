@@ -63,6 +63,12 @@ struct RootView: View {
 
             VStack(spacing: 10) {
                 topBar
+                if altitudeColors {
+                    HStack {
+                        Spacer()
+                        AltitudeLegend()
+                    }
+                }
                 Spacer()
                 if let plane = traffic.emergencyPlane, let kind = plane.emergency {
                     Button { pick(planeID: plane.id) } label: {
@@ -693,5 +699,24 @@ extension ActivityList {
             return "Near \(airport.name)"
         }
         return String(format: "%.1f°, %.1f°", plane.lat, plane.lon)
+    }
+}
+
+/// The altitude color scale, shown while planes are colored by altitude.
+struct AltitudeLegend: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("0").font(Theme.mono(9)).foregroundStyle(Theme.muted)
+            LinearGradient(colors: stride(from: 0, through: 40000, by: 4000).map { Color(PlaneAnnotationView.altitudeColor($0)) },
+                           startPoint: .leading, endPoint: .trailing)
+                .frame(width: 90, height: 6)
+                .clipShape(Capsule())
+            Text("40k ft").font(Theme.mono(9)).foregroundStyle(Theme.muted)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .panel()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Altitude colors: orange near the ground to violet at 40,000 feet")
     }
 }
