@@ -171,3 +171,31 @@ final class SquelchTests: XCTestCase {
         XCTAssertEqual(Double(total), 16_000, accuracy: 20)
     }
 }
+
+final class FrequencyTests: XCTestCase {
+    private func plane(lat: Double, lon: Double, altitude: Int?, ground: Bool) -> Plane {
+        let alt = ground ? "\"ground\"" : String(altitude ?? 0)
+        let json = """
+        {"hex":"abc123","flight":"DAL234","lat":\(lat),"lon":\(lon),"alt_baro":\(alt),"gs":140,"track":40}
+        """
+        let ac = try! JSONDecoder().decode(ADSBAircraft.self, from: Data(json.utf8))
+        return Plane(ac, now: Date())!
+    }
+
+    func testTowerTakesFieldAndFinalOnly() {
+        let kbos = AirportIndex.shared.airport(icao: "KBOS")!
+        let onField = plane(lat: kbos.lat + 0.01, lon: kbos.lon, altitude: nil, ground: true)
+        let onFinal = plane(lat: kbos.lat - 0.08, lon: kbos.lon - 0.08, altitude: 1500, ground: false)
+        let cruising = plane(lat: kbos.lat - 0.1, lon: kbos.lon, altitude: 33000, ground: false)
+        let far = plane(lat: kbos.lat + 0.6, lon: kbos.lon, altitude: 3000, ground: false)
+        func on(_ p: Plane, _ kind: ATCFeed.Kind) -> Bool {
+            TalkStore.onFrequency(p, distanceNM: Geo.distanceNM(p.lat, p.lon, kbos.lat, kbos.lon), airport: kbos, kind: kind)
+        }
+        XCTAssertTrue(on(onField, .tower))
+        XCTAssertTrue(on(onFinal, .tower))
+        XCTAssertFalse(on(cruising, .tower))
+        XCTAssertFalse(on(far, .tower))
+        XCTAssertFalse(on(onField, .approach))
+        XCTAssertTrue(on(far, .approach))
+    }
+}

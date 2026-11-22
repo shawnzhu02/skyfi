@@ -66,6 +66,7 @@ final class TalkStore {
     @ObservationIgnored private var backlog: [Transmission] = []
     @ObservationIgnored private var working = false
     @ObservationIgnored private var feedAirport: Airport?
+    @ObservationIgnored private var feedKind: ATCFeed.Kind = .tower
 
     private init() {
         let squelch = self.squelch
@@ -95,6 +96,7 @@ final class TalkStore {
             talking = [:]
         }
         feedAirport = airport
+        feedKind = feed?.kind ?? .tower
         traffic?.setPinned(airport)
         if item == nil, transmitting {
             transmitting = false
@@ -155,18 +157,35 @@ final class TalkStore {
         }
     }
 
-    /// Planes on this frequency: within 60 nm of the tuned airport, or on the ground there.
+    /// Planes that could be on the tuned frequency. A tower feed only talks to planes on the
+    /// field or close in and low; approach and departure talk to airborne planes further out.
+    /// A smaller list means fewer look-alike callsigns to confuse.
     func currentCandidates() -> [Candidate] {
         guard let airport = feedAirport, let traffic else { return [] }
+        let kind = feedKind
         return traffic.planes.values
             .map { ($0, Geo.distanceNM($0.lat, $0.lon, airport.lat, airport.lon)) }
-            .filter { $0.1 <= Self.candidateRadiusNM }
+            .filter { Self.onFrequency($0.0, distanceNM: $0.1, airport: airport, kind: kind) }
             .sorted { $0.1 < $1.1 }
             .map { plane, _ in
                 Candidate(id: plane.id, callsign: plane.callsign, registration: plane.registration, type: plane.type,
                           onGround: plane.onGround, approaching: EventDetector.isApproaching(plane, to: airport),
                           track: plane.track)
             }
+    }
+
+    nonisolated static func onFrequency(_ plane: Plane, distanceNM: Double, airport: Airport, kind: ATCFeed.Kind) -> Bool {
+        let agl = plane.altitude.map { $0 - airport.elev }
+        switch kind {
+        case .tower:
+            if plane.onGround { return distanceNM <= 3 }
+            guard distanceNM <= 15 else { return false }
+            return (agl ?? 0) <= 5000
+        case .approach, .departure:
+            if plane.onGround { return false }
+            guard distanceNM <= candidateRadiusNM else { return false }
+            return (agl ?? 0) <= 18000
+        }
     }
 
     /// The freshest talking plane, for the off-screen arrow.
