@@ -409,7 +409,8 @@ struct PlaneCard: View {
                 if let reg = plane.registration { stat("REG", reg) }
                 // Only an emergency code earns the room (the row is full on small phones).
                 if plane.emergency != nil, let squawk = plane.squawk { stat("SQK", squawk) }
-                if let airport = traffic.connected, let facility = LikelyFacility.guess(plane, airport: airport) {
+                if let airport = traffic.connected, TrafficStore.inRange(plane, of: airport),
+                   let facility = LikelyFacility.guess(plane, airport: airport) {
                     // "TWR 128.8" when the airport has just one tower frequency.
                     let mhz = FrequencyIndex.shared.single(airport.icao, kind: facility.rawValue)?.mhzText
                     stat("ON", [facility.rawValue, mhz].compactMap { $0 }.joined(separator: " "))
@@ -445,7 +446,9 @@ struct PlaneCard: View {
 
     /// "12 nm SW of BOS": from the connected airport, or the nearest one within 60 nm.
     static func position(_ plane: Plane, near connected: Airport?) -> String? {
-        let airport = connected ?? AirportIndex.shared.nearest(lat: plane.lat, lon: plane.lon, withinNM: 60)
+        // A plane from the worldwide search can be an ocean away from the connected airport.
+        let local = connected.flatMap { Geo.distanceNM($0.lat, $0.lon, plane.lat, plane.lon) <= 150 ? $0 : nil }
+        let airport = local ?? AirportIndex.shared.nearest(lat: plane.lat, lon: plane.lon, withinNM: 60)
         guard let airport else { return nil }
         let distance = Geo.distanceNM(airport.lat, airport.lon, plane.lat, plane.lon)
         if distance < 1 { return "At \(airport.code)" }
