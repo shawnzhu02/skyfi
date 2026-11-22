@@ -292,7 +292,7 @@ final class ClockTests: XCTestCase {
     }
 }
 
-final class FrequencyTests: XCTestCase {
+final class AirportFrequencyTests: XCTestCase {
     func testParseAndText() throws {
         let json = #"{"KBOS":[["TWR","Boston Tower West",128.8],["TWR","Boston Tower East",132.225],["GND","Ground",121.9],["bad"]]}"#
         let index = FrequencyIndex(FrequencyIndex.parse(Data(json.utf8)))
