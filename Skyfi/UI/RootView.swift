@@ -19,8 +19,18 @@ struct RootView: View {
     @State private var following = false
     @State private var resumeDismissed = false
 
+    @State private var activeRunways: Set<String> = []
+
+    /// Changes only when something the runway pick depends on changes, so the pick isn't redone every tick.
+    private var runwayInputs: String {
+        guard let icao = traffic.connected?.icao else { return "" }
+        let atis = ATISStore.shared.atis(icao).map { "\($0.kind)\($0.code)" }.joined()
+        let metar = WeatherStore.shared.metar(icao)?.observed?.timeIntervalSince1970 ?? 0
+        return "\(icao)|\(atis)|\(metar)|\(traffic.events.count)|\(traffic.events.last?.id.uuidString ?? "")"
+    }
+
     /// Runways in use at the connected airport: what the ATIS says, else what traffic and wind suggest.
-    private var activeRunways: Set<String> {
+    private func pickActiveRunways() -> Set<String> {
         guard let airport = traffic.connected else { return [] }
         let atis = ATIS.runways(in: ATISStore.shared.atis(airport.icao), airport: airport)
         if !atis.isEmpty { return Set(atis.landing + atis.departing) }
@@ -133,6 +143,10 @@ struct RootView: View {
                 selectedPlaneID = nil
                 following = false
             }
+        }
+        .onChange(of: runwayInputs, initial: true) { _, _ in
+            let picked = pickActiveRunways()
+            if picked != activeRunways { activeRunways = picked }
         }
         .onChange(of: locator.denied) { _, denied in
             if denied { locationDenied = true }

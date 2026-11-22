@@ -381,6 +381,16 @@ final class Mixer {
         updateNowPlaying()
     }
 
+    /// Play was tapped on LiveATC's page while Skyfi had it paused: let the tower go, leave the music.
+    func pageResumedTower() {
+        guard towerInBrowser else { return }
+        dlog("atc", "page play lifted the Skyfi pause")
+        userPaused = false
+        activateSession()
+        LiveATCBrowser.shared.setSuspended(false)
+        updateNowPlaying()
+    }
+
     /// The LiveATC page started or stopped playing: keep the lock screen and play button right.
     func browserMediaChanged() {
         updateNowPlaying()

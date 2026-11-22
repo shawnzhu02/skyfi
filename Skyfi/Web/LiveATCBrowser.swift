@@ -222,8 +222,9 @@ final class LiveATCBrowser {
     fileprivate func handleMedia(type: String, detail: String, host: String) {
         dlog("web", "media \(type)\(detail.isEmpty ? "" : " \(detail)")\(host.isEmpty ? "" : " via \(host)")")
         // You tapped play on the page while Skyfi had it paused: that's a resume, not something to block.
+        // Only the tower resumes; the music stays as you left it.
         if type == "play", suspended {
-            Mixer.shared.resume()
+            Mixer.shared.pageResumedTower()
             return
         }
         switch type {

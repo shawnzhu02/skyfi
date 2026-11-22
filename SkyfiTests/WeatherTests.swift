@@ -374,3 +374,12 @@ final class TAFTests: XCTestCase {
         XCTAssertEqual(taf.upcoming(now: now).count, 2)
     }
 }
+
+final class ProgressUnknownStopTests: XCTestCase {
+    func testUnknownMiddleStopGivesNoBar() {
+        let json: [String: Any] = ["hex": "abc998", "flight": "UAL2", "lat": 41, "lon": -80, "gs": 450, "alt_baro": 35000, "track": 270]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let plane = Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+        XCTAssertNil(FlightProgress.from(route: "BOS → QQQ → LAX", plane: plane))
+    }
+}

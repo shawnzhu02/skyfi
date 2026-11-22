@@ -175,7 +175,8 @@ struct AirportSheet: View {
     private var connectButton: some View {
         Button {
             // Connected with the tower stopped: the button starts it again.
-            if isConnected, mixer.feed != nil, !isFailed(mixer.atcStatus) {
+            // An airport without Skyfi feeds has nothing to start, so the button disconnects.
+            if isConnected, mixer.feed != nil || Catalog.feeds(at: airport.icao).isEmpty, !isFailed(mixer.atcStatus) {
                 mixer.disconnect()
             } else {
                 mixer.connect(airport)
@@ -200,7 +201,7 @@ struct AirportSheet: View {
 
     private var title: String {
         guard isConnected else { return "Connect" }
-        if mixer.feed == nil { return "Start tower" }
+        if mixer.feed == nil, !Catalog.feeds(at: airport.icao).isEmpty { return "Start tower" }
         switch mixer.atcStatus {
         case .loading: return "Connecting…"
         case .failed: return "Retry now"

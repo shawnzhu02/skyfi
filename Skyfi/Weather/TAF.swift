@@ -63,7 +63,12 @@ final class TAFStore {
         fetched[icao] = Date()
         guard let url = URL(string: "https://aviationweather.gov/api/data/taf?ids=\(icao)&format=json") else { return }
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(from: url)
+            // A server error keeps the last good forecast.
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                fetched[icao] = nil
+                return
+            }
             forecasts[icao] = TAF.parse(data).first { $0.station == icao }
         } catch {
             fetched[icao] = nil

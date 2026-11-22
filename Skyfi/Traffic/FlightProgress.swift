@@ -11,10 +11,11 @@ struct FlightProgress: Equatable {
     /// `route` is RouteLookup's "BOS → ORD → LAX". For a multi-leg route, the leg the plane is
     /// closest to flying (smallest detour from the straight line) wins.
     static func from(route: String, plane: Plane, index: AirportIndex = .shared) -> FlightProgress? {
-        let stops = route.components(separatedBy: "→")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .compactMap { index.airport(code: $0) }
-        guard stops.count >= 2 else { return nil }
+        // Every stop must be known: dropping one would invent a leg that isn't flown.
+        let resolved = route.components(separatedBy: "→")
+            .map { index.airport(code: $0.trimmingCharacters(in: .whitespaces)) }
+        guard resolved.count >= 2, !resolved.contains(where: { $0 == nil }) else { return nil }
+        let stops = resolved.compactMap { $0 }
         var best: (from: Airport, to: Airport, detour: Double)?
         for (a, b) in zip(stops, stops.dropFirst()) {
             let leg = Geo.distanceNM(a.lat, a.lon, b.lat, b.lon)
