@@ -395,3 +395,14 @@ final class ApproachLineTests: XCTestCase {
         XCTAssertNil(strip.approachLine(for: "09"))
     }
 }
+
+final class LookupTests: XCTestCase {
+    func testQueryKinds() {
+        XCTAssertEqual(ADSBClient.Lookup.from("dal234"), [.callsign("DAL234")])
+        XCTAssertEqual(ADSBClient.Lookup.from("G-EUPT"), [.registration("G-EUPT")])
+        XCTAssertEqual(ADSBClient.Lookup.from("N123AB"), [.registration("N123AB"), .callsign("N123AB")])
+        XCTAssertEqual(ADSBClient.Lookup.from("4068f5"), [.hex("4068f5"), .callsign("4068F5")])
+        XCTAssertEqual(ADSBClient.Lookup.from("ab"), [])
+        XCTAssertEqual(ADSBClient.Lookup.from("DAL 234/"), [])
+    }
+}

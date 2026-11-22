@@ -39,6 +39,49 @@ struct ADSBClient {
     }
 }
 
+extension ADSBClient {
+    /// What a search box entry most likely is, for adsb.lol's lookups.
+    enum Lookup: Equatable {
+        case hex(String)
+        case registration(String)
+        case callsign(String)
+
+        static func from(_ query: String) -> [Lookup] {
+            let q = query.trimmingCharacters(in: .whitespaces).uppercased()
+            guard q.count >= 3, q.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" }) else { return [] }
+            if q.contains("-") { return [.registration(q)] }
+            if q.count == 6, q.allSatisfy(\.isHexDigit), q.contains(where: \.isNumber) { return [.hex(q.lowercased()), .callsign(q)] }
+            // US tails: N + digit. Could also be a callsign, so try both.
+            if q.hasPrefix("N"), q.dropFirst().first?.isNumber == true { return [.registration(q), .callsign(q)] }
+            return [.callsign(q)]
+        }
+
+        var url: URL? {
+            switch self {
+            case .hex(let v): return URL(string: "https://api.adsb.lol/v2/hex/\(v)")
+            case .registration(let v): return URL(string: "https://api.adsb.lol/v2/reg/\(v)")
+            case .callsign(let v): return URL(string: "https://api.adsb.lol/v2/callsign/\(v)")
+            }
+        }
+    }
+
+    /// Finds a flight anywhere in the world by callsign, registration or hex code.
+    func find(_ query: String) async -> [ADSBAircraft] {
+        for lookup in Lookup.from(query) {
+            guard let url = lookup.url else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10
+            request.setValue("Skyfi/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+            guard let (data, response) = try? await session.data(for: request),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let found = try? JSONDecoder().decode(ADSBResponse.self, from: data).all,
+                  !found.isEmpty else { continue }
+            return found
+        }
+        return []
+    }
+}
+
 /// Best-effort origin/destination lookup through adsb.lol's route set API.
 actor RouteLookup {
     static let shared = RouteLookup()
