@@ -16,6 +16,7 @@ struct RootView: View {
     @State private var showTranscript = false
     @State private var browser = LiveATCBrowser.shared
     @AppStorage("seenFirstRunTip") private var seenTip = false
+    @State private var following = false
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
@@ -25,7 +26,8 @@ struct RootView: View {
                       talking: talk.talking, favorites: Places.shared.favorites,
                       trail: traffic.trail(selectedPlaneID), look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
-                      onCenterChange: { center = $0 })
+                      onCenterChange: { center = $0 },
+                      followSelected: following, onUserMove: { following = false })
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {
@@ -48,7 +50,7 @@ struct RootView: View {
                         .transition(.opacity)
                 }
                 if let plane = selectedPlane {
-                    PlaneCard(plane: plane) { selectedPlaneID = nil }
+                    PlaneCard(plane: plane, following: $following) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 TranscriptStrip(onPick: pick(planeID:), onOpen: { showTranscript = true })
@@ -73,6 +75,15 @@ struct RootView: View {
         }
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }
+        .onChange(of: selectedPlaneID) { _, _ in following = false }
+        .task(id: traffic.connected?.icao) {
+            // The connected airport's weather for the top bar (the store caches 10 minutes).
+            guard let icao = traffic.connected?.icao else { return }
+            while !Task.isCancelled {
+                await WeatherStore.shared.refresh(icao)
+                try? await Task.sleep(for: .seconds(300))
+            }
+        }
         .onChange(of: traffic.connected) { _, airport in
             // Connected once: the tip has done its job.
             if airport != nil { seenTip = true }
@@ -144,6 +155,13 @@ struct RootView: View {
                             .font(Theme.mono(11)).foregroundStyle(Theme.muted)
                     }
                 }
+                if let airport = traffic.connected, let metar = WeatherStore.shared.metar(airport.icao) {
+                    HStack(spacing: 6) {
+                        Text(metar.category.rawValue).font(Theme.mono(10, .bold))
+                            .foregroundStyle(WeatherSection.color(metar.category))
+                        Text(metar.windText).font(Theme.mono(10)).foregroundStyle(Theme.muted)
+                    }
+                }
                 if traffic.connected == nil {
                     Text("Tap a cyan airport to connect").font(.system(size: 10)).foregroundStyle(Theme.muted)
                 }
@@ -188,6 +206,7 @@ struct RootView: View {
 
 struct PlaneCard: View {
     let plane: Plane
+    @Binding var following: Bool
     var onClose: () -> Void
     @State private var route: String?
     @Environment(TrafficStore.self) private var traffic
@@ -227,13 +246,22 @@ struct PlaneCard: View {
                         .accessibilityLabel("Likely talking to \(airport.code) \(facility.label)")
                 }
             }
-            if let url = Self.flightAware(plane) {
-                Link(destination: url) {
-                    Label("Track on FlightAware", systemImage: "arrow.up.right.square")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.cyan)
+            HStack(spacing: 16) {
+                Button { following.toggle() } label: {
+                    Label(following ? "Following" : "Follow", systemImage: following ? "location.fill" : "location")
+                }
+                if let url = Self.flightAware(plane) {
+                    Link(destination: url) {
+                        Label("FlightAware", systemImage: "arrow.up.right.square")
+                    }
+                    ShareLink(item: url, message: Text(Self.shareText(plane, near: traffic.connected))) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.cyan)
+            .buttonStyle(.plain)
         }
         .padding(14)
         .panel()
@@ -243,6 +271,14 @@ struct PlaneCard: View {
                 route = await RouteLookup.shared.route(callsign: callsign, lat: plane.lat, lon: plane.lon)
             }
         }
+    }
+
+    static func shareText(_ plane: Plane, near airport: Airport?) -> String {
+        var parts = [plane.title]
+        if let type = plane.type { parts.append(type) }
+        parts.append(plane.onGround ? "on the ground" : "at \(Format.altitude(plane))")
+        if let airport { parts.append("near \(airport.code)") }
+        return parts.joined(separator: " ") + ", spotted on Skyfi"
     }
 
     /// The flight's page on FlightAware (by callsign, else registration).

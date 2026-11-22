@@ -38,6 +38,10 @@ struct GlobeView: UIViewRepresentable {
     @Binding var selectedAirport: Airport?
     @Binding var focus: MapFocus?
     var onCenterChange: (CLLocationCoordinate2D) -> Void
+    /// Keep the map centered on the selected plane.
+    var followSelected = false
+    /// You dragged or pinched the map (ends follow mode).
+    var onUserMove: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -199,10 +203,13 @@ struct GlobeView: UIViewRepresentable {
                 }
             }
             let target = Date().addingTimeInterval(1)
+            let followed = parent.followSelected ? parent.selectedPlaneID.flatMap { planeAnnotations[$0] } : nil
             UIView.animate(withDuration: 1, delay: 0, options: [.curveLinear, .allowUserInteraction, .beginFromCurrentState]) {
                 for annotation in self.planeAnnotations.values {
                     annotation.coordinate = annotation.plane.position(at: target)
                 }
+                // Glide the map with the plane, in the same animation.
+                if let followed { self.map?.setCenter(followed.coordinate, animated: false) }
             }
         }
 
@@ -399,6 +406,14 @@ struct GlobeView: UIViewRepresentable {
                 parent.selectedAirport = airport.airport
             }
             mapView.deselectAnnotation(annotation, animated: false)
+        }
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            // A finger on the map (not code moving it) means you want to look around.
+            let touching = mapView.subviews.first?.gestureRecognizers?.contains {
+                $0.state == .began || $0.state == .changed
+            } ?? false
+            if touching, parent.followSelected { parent.onUserMove() }
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {

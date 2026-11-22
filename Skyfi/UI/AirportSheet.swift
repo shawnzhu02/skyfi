@@ -28,6 +28,11 @@ struct AirportSheet: View {
                         if isConnected {
                             Text("\(ground) on the ground · \(approaching.count) on approach")
                                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            let hour = events.filter { Date().timeIntervalSince($0.time) < 3600 }
+                            if !hour.isEmpty {
+                                Text("Last hour: \(hour.filter { $0.kind == .arrival }.count) landings · \(hour.filter { $0.kind == .departure }.count) takeoffs")
+                                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                            }
                         }
                     }
                     .listRowBackground(Color.clear)
