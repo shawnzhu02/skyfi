@@ -1,0 +1,7 @@
+[
+  {"id": "lofigirl", "title": "lofi hip hop radio", "subtitle": "Lofi Girl · live", "kind": "youtube", "value": "jfKfPfyJRdk"},
+  {"id": "synthwave", "title": "synthwave radio", "subtitle": "Lofi Girl · live", "kind": "youtube", "value": "4xDzrJKXOOY"},
+  {"id": "chillhop", "title": "lofi hip hop radio", "subtitle": "Chillhop Music · live", "kind": "youtube", "value": "7NOSDKb0HlU"},
+  {"id": "lautlofi", "title": "Lofi radio", "subtitle": "laut.fm · always on", "kind": "radio", "value": "https://stream.laut.fm/lofi"},
+  {"id": "ilovechillhop", "title": "I Love Chillhop", "subtitle": "ilovemusic.de · always on", "kind": "radio", "value": "https://streams.ilovemusic.de/iloveradio17.mp3"}
+]

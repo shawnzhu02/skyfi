@@ -1,0 +1,36 @@
+name: Friends beta
+
+# Sends a TestFlight build to the external "Friends" group (public link) and
+# submits it to Beta App Review. Run it by hand after a build finishes
+# processing:  gh workflow run beta.yml   (optionally -f build=12)
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Build number (blank = newest processed build)"
+        required: false
+        default: ""
+
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send build to friends
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          BUILD_NUMBER: ${{ inputs.build }}
+          BETA_PRIVACY_URL: ${{ vars.BETA_PRIVACY_URL }}
+          BETA_FEEDBACK_EMAIL: ${{ vars.BETA_FEEDBACK_EMAIL }}
+          BETA_CONTACT_FIRST: ${{ vars.BETA_CONTACT_FIRST }}
+          BETA_CONTACT_LAST: ${{ vars.BETA_CONTACT_LAST }}
+          BETA_CONTACT_EMAIL: ${{ vars.BETA_CONTACT_EMAIL }}
+          BETA_CONTACT_PHONE: ${{ secrets.BETA_CONTACT_PHONE }}
+          BETA_LINK_LIMIT: ${{ vars.BETA_LINK_LIMIT }}
+        run: |
+          pip install --quiet pyjwt cryptography requests
+          python scripts/asc_beta.py

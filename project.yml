@@ -1,0 +1,90 @@
+name: Skyfi
+options:
+  bundleIdPrefix: com.shawnzhu
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  YouTubeKit:
+    url: https://github.com/alexeichhorn/YouTubeKit
+    from: "0.4.10"
+
+targets:
+  Skyfi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Skyfi
+    dependencies:
+      - package: YouTubeKit
+    info:
+      path: Config/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleDisplayName: Skyfi
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIUserInterfaceStyle: Dark
+        # Music and tower audio keep playing with the app closed or the phone locked.
+        UIBackgroundModes:
+          - audio
+        # LiveATC mount links start on plain http before redirecting to https.
+        NSAppTransportSecurity:
+          NSExceptionDomains:
+            liveatc.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shawnzhu.skyfi
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: NO
+
+  SkyfiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SkyfiTests
+    dependencies:
+      - target: Skyfi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shawnzhu.skyfi.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Skyfi:
+    build:
+      targets:
+        Skyfi: all
+        SkyfiTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SkyfiTests
+    archive:
+      config: Release
