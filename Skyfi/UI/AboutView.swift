@@ -8,6 +8,8 @@ struct AboutView: View {
     @State private var confirmClear = false
     @AppStorage("altitudeColors") private var altitudeColors = false
     @AppStorage("keepAwake") private var keepAwake = false
+    @AppStorage("dataBlocks") private var dataBlocks = false
+    @AppStorage("hideGround") private var hideGround = false
 
     var body: some View {
         @Bindable var mixer = mixer
@@ -24,12 +26,16 @@ struct AboutView: View {
             Section {
                 Toggle("Color planes by altitude", isOn: $altitudeColors)
                     .tint(Theme.cyan)
+                Toggle("Radar data blocks", isOn: $dataBlocks)
+                    .tint(Theme.cyan)
+                Toggle("Hide planes on the ground", isOn: $hideGround)
+                    .tint(Theme.cyan)
                 Toggle("Keep the screen on while connected", isOn: $keepAwake)
                     .tint(Theme.cyan)
             } header: {
                 Text("Map")
             } footer: {
-                Text("Altitude colors: orange near the ground, then yellow, green, blue and violet up high. Planes on approach, on the ground or squawking an emergency keep their own colors. Keeping the screen on uses more battery; plug in for long sessions.")
+                Text("Data blocks show altitude in hundreds of feet and speed in tens of knots under each callsign (\"120 25\" = 12,000 ft, 250 kt), like a controller's scope. Altitude colors: orange near the ground, then yellow, green, blue and violet up high. Planes on approach, on the ground or squawking an emergency keep their own colors. Keeping the screen on uses more battery; plug in for long sessions.")
             }
 
             Section {

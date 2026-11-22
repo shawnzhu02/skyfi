@@ -129,7 +129,21 @@ final class PlaneAnnotationView: MKAnnotationView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(plane: Plane, style: Style, showLabel: Bool, mapHeading: Double, altitudeColors: Bool = false) {
+    /// Radar-style data block: "DAL234" over "120 25" (altitude in hundreds of feet, speed in tens of knots).
+    static func dataBlock(_ plane: Plane) -> String {
+        var second: [String] = []
+        if plane.onGround {
+            second.append("GND")
+        } else if let altitude = plane.altitude {
+            second.append(String(format: "%03d", max(0, altitude) / 100))
+        }
+        if let speed = plane.groundSpeed, !plane.onGround { second.append(String(Int(speed / 10))) }
+        return second.isEmpty ? plane.title : plane.title + "
+" + second.joined(separator: " ")
+    }
+
+    func configure(plane: Plane, style: Style, showLabel: Bool, mapHeading: Double, altitudeColors: Bool = false,
+                   dataBlocks: Bool = false) {
         // Only ordinary airborne planes take the altitude color; selected, approach, ground and emergency keep theirs.
         let tintByAltitude = altitudeColors && style == .airborne
         if tintByAltitude {
@@ -149,7 +163,11 @@ final class PlaneAnnotationView: MKAnnotationView {
         let scale = Self.scale(forType: plane.type)
         glyph.transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale, y: scale)
         label.isHidden = !showLabel
-        label.text = plane.title
+        label.text = dataBlocks ? Self.dataBlock(plane) : plane.title
+        let lines: CGFloat = dataBlocks && label.text?.contains("
+") == true ? 2 : 1
+        label.numberOfLines = Int(lines)
+        label.frame = CGRect(x: -25, y: 28, width: 80, height: 13 * lines)
         isAccessibilityElement = true
         accessibilityLabel = [plane.title, plane.type, Format.altitude(plane), plane.emergency.map { "squawking \($0)" }]
             .compactMap { $0 }.joined(separator: ", ")

@@ -46,6 +46,10 @@ struct GlobeView: UIViewRepresentable {
     var showUser = false
     /// Color airborne planes by altitude instead of amber.
     var altitudeColors = false
+    /// Labels show altitude and speed under the callsign.
+    var dataBlocks = false
+    /// Leave parked and taxiing planes off the map (the selected one still shows).
+    var hideGround = false
     /// Runways in use at the connected airport (from the ATIS or traffic), drawn highlighted.
     var activeRunways: Set<String> = []
 
@@ -310,7 +314,10 @@ struct GlobeView: UIViewRepresentable {
         private func syncPlanes(_ map: MKMapView) {
             let rect = visibleRect(map)
             let now = Date()
-            var visible = parent.planes.values.filter { rect.contains(MKMapPoint($0.position(at: now))) }
+            let hideGround = parent.hideGround, selected = parent.selectedPlaneID
+            var visible = parent.planes.values.filter {
+                (!hideGround || !$0.onGround || $0.id == selected) && rect.contains(MKMapPoint($0.position(at: now)))
+            }
             if visible.count > Self.maxPlanes {
                 // Too many: keep the selected one, then airborne planes nearest the center.
                 let center = map.centerCoordinate
@@ -404,7 +411,8 @@ struct GlobeView: UIViewRepresentable {
         private func configure(_ view: PlaneAnnotationView, plane: Plane, tuned: Airport?, map: MKMapView) {
             view.configure(plane: plane, style: style(for: plane, tuned: tuned),
                            showLabel: map.region.span.latitudeDelta < Self.labelSpan || plane.id == parent.selectedPlaneID,
-                           mapHeading: map.camera.heading, altitudeColors: parent.altitudeColors)
+                           mapHeading: map.camera.heading, altitudeColors: parent.altitudeColors,
+                           dataBlocks: parent.dataBlocks)
             view.setTalk(parent.talking[plane.id])
         }
 

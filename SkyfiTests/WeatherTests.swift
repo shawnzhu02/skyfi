@@ -457,3 +457,18 @@ final class WeatherIntentTests: XCTestCase {
         XCTAssertEqual(AirportWeatherIntent.summary(code: "BOS", name: "Logan", metar: nil, atis: nil), "No current weather report for BOS.")
     }
 }
+
+final class DataBlockTests: XCTestCase {
+    private func plane(alt: Any, gs: Double?) -> Plane {
+        var json: [String: Any] = ["hex": "abc777", "flight": "DAL234", "lat": 42, "lon": -71, "alt_baro": alt]
+        if let gs { json["gs"] = gs }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+    }
+
+    func testDataBlock() {
+        XCTAssertEqual(PlaneAnnotationView.dataBlock(plane(alt: 12000, gs: 254)), "DAL234\n120 25")
+        XCTAssertEqual(PlaneAnnotationView.dataBlock(plane(alt: 900, gs: 140)), "DAL234\n009 14")
+        XCTAssertEqual(PlaneAnnotationView.dataBlock(plane(alt: "ground", gs: 12)), "DAL234\nGND")
+    }
+}

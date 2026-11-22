@@ -55,6 +55,8 @@ struct RootView: View {
     static func lostSignal(_ plane: Plane) -> Bool { Date().timeIntervalSince(plane.fixTime) > 15 }
     @AppStorage("altitudeColors") private var altitudeColors = false
     @AppStorage("keepAwake") private var keepAwake = false
+    @AppStorage("dataBlocks") private var dataBlocks = false
+    @AppStorage("hideGround") private var hideGround = false
     @State private var locator = Locator.shared
     @State private var locationDenied = false
 
@@ -72,7 +74,7 @@ struct RootView: View {
                       followSelected: following && !(selectedPlane.map(Self.lostSignal) ?? false),
                       onUserMove: { following = false },
                       showUser: locator.authorized, altitudeColors: altitudeColors,
-                      activeRunways: activeRunways)
+                      dataBlocks: dataBlocks, hideGround: hideGround, activeRunways: activeRunways)
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {
