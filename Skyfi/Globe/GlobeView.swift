@@ -342,6 +342,7 @@ struct GlobeView: UIViewRepresentable {
         private func style(for plane: Plane, tuned: Airport?) -> PlaneAnnotationView.Style {
             if plane.id == parent.selectedPlaneID { return .selected }
             if plane.onGround { return .ground }
+            if plane.emergency != nil { return .emergency }
             if let tuned, EventDetector.isApproaching(plane, to: tuned) { return .approach }
             return .airborne
         }

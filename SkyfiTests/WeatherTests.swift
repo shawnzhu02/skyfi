@@ -181,3 +181,19 @@ final class PlaneSizeTests: XCTestCase {
         XCTAssertEqual(PlaneAnnotationView.scale(forType: nil), 1)
     }
 }
+
+final class EmergencyTests: XCTestCase {
+    func testEmergencySquawks() {
+        func plane(_ squawk: String?) -> Plane {
+            var json: [String: Any] = ["hex": "abc123", "flight": "DAL234", "lat": 42.4, "lon": -71.0, "alt_baro": 5000]
+            if let squawk { json["squawk"] = squawk }
+            let data = try! JSONSerialization.data(withJSONObject: json)
+            return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+        }
+        XCTAssertEqual(plane("7700").emergency, "emergency")
+        XCTAssertEqual(plane("7600").emergency, "radio failure")
+        XCTAssertEqual(plane("7500").emergency, "hijack")
+        XCTAssertNil(plane("1200").emergency)
+        XCTAssertNil(plane(nil).emergency)
+    }
+}

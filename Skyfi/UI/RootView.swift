@@ -30,6 +30,18 @@ struct RootView: View {
 
             VStack(spacing: 10) {
                 topBar
+                if let plane = traffic.planes.values.first(where: { $0.emergency != nil }), let kind = plane.emergency {
+                    Button { pick(planeID: plane.id) } label: {
+                        Label("\(plane.title) squawking \(plane.squawk ?? "") · \(kind)", systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.red.opacity(0.85), in: Capsule())
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 24)
+                }
                 Spacer()
                 if !seenTip, traffic.connected == nil, selectedPlane == nil {
                     FirstRunTip { seenTip = true }
@@ -203,11 +215,13 @@ struct PlaneCard: View {
                 Text("Landing \(airport.code) in about \(minutes) min")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.cyan)
             }
-            HStack(spacing: 18) {
+            HStack(spacing: 14) {
                 stat("ALT", Format.altitude(plane))
                 stat("SPD", Format.speed(plane.groundSpeed))
                 stat("V/S", Format.verticalRate(plane.verticalRate))
                 if let reg = plane.registration { stat("REG", reg) }
+                // Only an emergency code earns the room (the row is full on small phones).
+                if plane.emergency != nil, let squawk = plane.squawk { stat("SQK", squawk) }
                 if let airport = traffic.connected, let facility = LikelyFacility.guess(plane, airport: airport) {
                     stat("ON", facility.rawValue)
                         .accessibilityLabel("Likely talking to \(airport.code) \(facility.label)")

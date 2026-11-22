@@ -34,6 +34,7 @@ final class PlaneAnnotationView: MKAnnotationView {
         case airborne
         case ground
         case approach
+        case emergency
         case selected
     }
 
@@ -46,7 +47,8 @@ final class PlaneAnnotationView: MKAnnotationView {
     private static let images: [Style: UIImage] = {
         var result: [Style: UIImage] = [:]
         let colors: [Style: UIColor] = [.airborne: Theme.uiAmber, .ground: Theme.uiGround,
-                                        .approach: Theme.uiApproach, .selected: Theme.uiCyan]
+                                        .approach: Theme.uiApproach, .selected: Theme.uiCyan,
+                                        .emergency: UIColor.systemRed]
         for (style, color) in colors {
             let size: CGFloat = style == .selected ? 26 : (style == .ground ? 14 : 19)
             let config = UIImage.SymbolConfiguration(pointSize: size, weight: .bold)
@@ -103,7 +105,7 @@ final class PlaneAnnotationView: MKAnnotationView {
             self.style = style
             glyph.layer.shadowColor = (style == .selected ? Theme.uiCyan : UIColor.black).cgColor
             glyph.layer.shadowRadius = style == .selected ? 8 : 2
-            zPriority = style == .selected ? .max : (style == .approach ? .defaultSelected : .defaultUnselected)
+            zPriority = style == .selected ? .max : (style == .approach || style == .emergency ? .defaultSelected : .defaultUnselected)
         }
         // The SF Symbol "airplane" points east, so 90° is "no turn".
         let angle = ((plane.track ?? 90) - mapHeading - 90) * .pi / 180
@@ -137,7 +139,7 @@ final class PlaneAnnotationView: MKAnnotationView {
                 ring.removeAllAnimations()
                 ring.isHidden = true
                 bubble.isHidden = true
-                zPriority = style == .selected ? .max : (style == .approach ? .defaultSelected : .defaultUnselected)
+                zPriority = style == .selected ? .max : (style == .approach || style == .emergency ? .defaultSelected : .defaultUnselected)
             }
             return
         }

@@ -141,6 +141,16 @@ struct Plane: Identifiable, Equatable {
 
     var title: String { callsign ?? registration ?? id.uppercased() }
 
+    /// 7500 hijack, 7600 lost radio, 7700 emergency.
+    var emergency: String? {
+        switch squawk {
+        case "7500": return "hijack"
+        case "7600": return "radio failure"
+        case "7700": return "emergency"
+        default: return nil
+        }
+    }
+
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }
 
     /// Dead-reckoned position: last fix moved along track at ground speed, capped at 30 s.
