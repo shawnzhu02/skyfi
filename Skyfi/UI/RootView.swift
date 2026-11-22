@@ -77,8 +77,11 @@ struct RootView: View {
                     Circle().fill(traffic.failing ? Color.red : Color.green).frame(width: 6, height: 6)
                     Text("\(traffic.planes.count) planes").font(Theme.mono(11)).foregroundStyle(Theme.muted)
                 }
-                if traffic.limitedCoverage {
-                    Text("Zoom in to see all live traffic").font(.system(size: 10)).foregroundStyle(Theme.muted)
+                if !traffic.watchingAirports {
+                    Text("Planes show near major airports").font(.system(size: 10)).foregroundStyle(Theme.muted)
+                } else if traffic.limitedCoverage {
+                    Text("Showing the 8 airports nearest the middle · zoom in for more")
+                        .font(.system(size: 10)).foregroundStyle(Theme.muted)
                 }
             }
             .padding(.horizontal, 12)
