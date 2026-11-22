@@ -79,6 +79,9 @@ struct RootView: View {
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }
         .onChange(of: selectedPlaneID) { _, _ in following = false }
+        // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
+        .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
+        .sensoryFeedback(.warning, trigger: traffic.planes.values.first(where: { $0.emergency != nil })?.id) { _, new in new != nil }
         .onChange(of: locator.location) { _, location in
             guard let location else { return }
             focus = MapFocus(location.coordinate, spanDegrees: 4)
