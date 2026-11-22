@@ -416,3 +416,22 @@ final class CompassTests: XCTestCase {
         XCTAssertEqual(PlaneCard.compass(-90), "W")
     }
 }
+
+final class NotableTests: XCTestCase {
+    private func plane(type: String?, flags: Int? = nil, squawk: String? = nil) -> Plane {
+        var json: [String: Any] = ["hex": "ae1234", "flight": "RCH123", "lat": 42, "lon": -71, "alt_baro": 20000]
+        if let type { json["t"] = type }
+        if let flags { json["dbFlags"] = flags }
+        if let squawk { json["squawk"] = squawk }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+    }
+
+    func testNotable() {
+        XCTAssertEqual(plane(type: "A388").notable, "A380")
+        XCTAssertEqual(plane(type: "C17", flags: 1).notable, "Military")
+        XCTAssertEqual(plane(type: "B738", squawk: "7700").notable, "Squawking emergency")
+        XCTAssertNil(plane(type: "B738").notable)
+        XCTAssertNil(plane(type: nil, flags: 0).notable)
+    }
+}

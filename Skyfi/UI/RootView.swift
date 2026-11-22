@@ -453,6 +453,13 @@ struct ActivityList: View {
     var onPick: (AirportEvent) -> Void
     @State private var query = ""
     @State var worldwide: [Plane] = []
+
+    /// Military, rare types and emergencies on the map right now, emergencies first.
+    var notable: [Plane] {
+        planes.filter { $0.notable != nil }
+            .sorted { ($0.emergency == nil ? 1 : 0, $0.title) < ($1.emergency == nil ? 1 : 0, $1.title) }
+            .prefix(20).map { $0 }
+    }
     @State var searching = false
     @State var searchedFor = ""
 
@@ -482,13 +489,36 @@ struct ActivityList: View {
                         }
                         .listStyle(.plain)
                     }
-                } else if events.isEmpty {
+                } else if events.isEmpty, notable.isEmpty {
                     ContentUnavailableView("No takeoffs or landings yet", systemImage: "airplane.departure",
                                            description: Text("Zoom in near a busy airport. Takeoffs and landings show up here as they happen."))
                 } else {
-                    List(events) { event in
-                        Button { onPick(event) } label: { EventRow(event: event) }
-                            .listRowBackground(Color.clear)
+                    List {
+                        if !notable.isEmpty {
+                            Section("Notable nearby") {
+                                ForEach(notable) { plane in
+                                    Button { onPickPlane(plane) } label: {
+                                        HStack {
+                                            Image(systemName: plane.emergency != nil ? "exclamationmark.triangle.fill" : "star.fill")
+                                                .font(.system(size: 11)).foregroundStyle(plane.emergency != nil ? .red : Theme.amber)
+                                            Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
+                                            Text(plane.notable ?? "").font(.system(size: 12)).foregroundStyle(Theme.amber)
+                                            Spacer()
+                                            Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                                        }
+                                    }
+                                    .listRowBackground(Color.clear)
+                                }
+                            }
+                        }
+                        if !events.isEmpty {
+                            Section("Takeoffs and landings") {
+                                ForEach(events) { event in
+                                    Button { onPick(event) } label: { EventRow(event: event) }
+                                        .listRowBackground(Color.clear)
+                                }
+                            }
+                        }
                     }
                     .listStyle(.plain)
                 }

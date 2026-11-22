@@ -42,6 +42,8 @@ struct ADSBAircraft: Decodable, Equatable {
     let category: String?
     let seenPos: Double?
     let seen: Double?
+    /// adsb.lol database flags: bit 1 = military, 2 = interesting, 4 = PIA, 8 = LADD.
+    let dbFlags: Int?
 
     enum CodingKeys: String, CodingKey {
         case hex, flight, lat, lon, track, squawk, category, seen
@@ -56,6 +58,7 @@ struct ADSBAircraft: Decodable, Equatable {
         case baroRate = "baro_rate"
         case geomRate = "geom_rate"
         case seenPos = "seen_pos"
+        case dbFlags
     }
 
     init(from decoder: Decoder) throws {
@@ -79,6 +82,7 @@ struct ADSBAircraft: Decodable, Equatable {
         category = try? c.decodeIfPresent(String.self, forKey: .category)
         seenPos = try? c.decodeIfPresent(Double.self, forKey: .seenPos)
         seen = try? c.decodeIfPresent(Double.self, forKey: .seen)
+        dbFlags = try? c.decodeIfPresent(Int.self, forKey: .dbFlags)
     }
 }
 
@@ -108,6 +112,9 @@ struct Plane: Identifiable, Equatable {
     /// When the reported position was measured.
     var fixTime: Date
     var lastSeen: Date
+    var military = false
+    /// Flagged "interesting" in the community database (government, rare, special).
+    var flaggedInteresting = false
 
     init?(_ a: ADSBAircraft, now: Date) {
         guard let lat = a.lat, let lon = a.lon else { return nil }
@@ -137,6 +144,27 @@ struct Plane: Identifiable, Equatable {
         squawk = a.squawk
         fixTime = now.addingTimeInterval(-(a.seenPos ?? 0))
         lastSeen = now
+        military = (a.dbFlags ?? 0) & 1 != 0
+        flaggedInteresting = (a.dbFlags ?? 0) & 2 != 0
+    }
+
+    /// Rare or special types spotters look out for.
+    private static let notableTypes: [String: String] = [
+        "A388": "A380", "B748": "747-8", "B744": "747-400", "B742": "747", "B743": "747", "B74S": "747SP",
+        "A124": "An-124", "A225": "An-225", "BLCF": "Dreamlifter", "A3ST": "Beluga", "A337": "BelugaXL",
+        "CONC": "Concorde", "C5M": "C-5", "B52": "B-52", "IL76": "Il-76", "A400": "A400M", "E3TF": "AWACS",
+        "U2": "U-2", "SR71": "SR-71", "B1": "B-1", "B2": "B-2", "VC25": "Air Force One type",
+        "DC3": "DC-3", "DC6": "DC-6", "C47": "C-47", "B17": "B-17", "B29": "B-29", "SPIT": "Spitfire",
+        "P51": "Mustang", "CAT": "Catalina", "SB39": "Stearman", "WB57": "WB-57",
+    ]
+
+    /// Why a spotter would care, or nil for an everyday flight.
+    var notable: String? {
+        if let emergency { return "Squawking \(emergency)" }
+        if let type, let name = Self.notableTypes[type.uppercased()] { return name }
+        if military { return "Military" }
+        if flaggedInteresting { return "Interesting" }
+        return nil
     }
 
     var title: String { callsign ?? registration ?? id.uppercased() }
