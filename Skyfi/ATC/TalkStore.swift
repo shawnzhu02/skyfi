@@ -22,12 +22,15 @@ final class TalkStore {
         let time: Date
         let duration: Double
         let seconds: Double
+        /// TWR, APP or DEP: who the controller was.
+        var facility = "TWR"
     }
 
     struct Talk: Equatable {
         let time: Date
         let speaker: CallsignMatcher.Speaker
         let text: String
+        var facility = "TWR"
 
         var isFresh: Bool { Date().timeIntervalSince(time) < TalkStore.glowSeconds }
     }
@@ -153,10 +156,11 @@ final class TalkStore {
         let candidates = currentCandidates()
         let prompt = useHints ? matcher.hint(for: candidates) : nil
         let started = Date()
+        let airport = feedAirport?.icao
         guard let heard = await model.transcribe(transmission.samples, prompt: prompt) else { return }
         let seconds = Date().timeIntervalSince(started)
-        // The feed may have changed while the model was busy.
-        guard feedAirport != nil else { return }
+        // The feed may have moved to another airport while the model was busy.
+        guard let airport, feedAirport?.icao == airport else { return }
         ingest(text: heard.text, start: transmission.start, duration: transmission.duration,
                seconds: seconds, candidates: candidates)
     }
@@ -173,12 +177,12 @@ final class TalkStore {
         let line = Line(text: text, planeID: result.accepted?.candidateID, label: plane?.title,
                         speaker: result.accepted?.speaker ?? .unknown, score: result.best?.score ?? 0,
                         runnerUp: result.runnerUp?.score, candidateCount: candidates.count,
-                        time: start, duration: duration, seconds: seconds)
+                        time: start, duration: duration, seconds: seconds, facility: feedKind.tag)
         lines.insert(line, at: 0)
         if lines.count > 100 { lines.removeLast(lines.count - 100) }
         if let accepted = result.accepted {
             talking = talking.filter { $0.value.isFresh }
-            talking[accepted.candidateID] = Talk(time: Date(), speaker: accepted.speaker, text: text)
+            talking[accepted.candidateID] = Talk(time: Date(), speaker: accepted.speaker, text: text, facility: feedKind.tag)
         }
         return line
     }
@@ -216,7 +220,7 @@ final class TalkStore {
         let agl = plane.altitude.map { $0 - airport.elev }
         switch kind {
         case .tower:
-            if plane.onGround { return distanceNM <= 3 }
+            if plane.onGround { return TrafficStore.onField(plane, airport) }
             guard distanceNM <= 15 else { return false }
             return (agl ?? 0) <= 5000
         case .approach, .departure:

@@ -210,6 +210,8 @@ final class FrequencyTests: XCTestCase {
 @MainActor
 final class HighlightTests: XCTestCase {
     let kbos = AirportIndex.shared.airport(icao: "KBOS")!
+    /// TalkStore only holds the traffic weakly (the app owns it), so the test must.
+    private var traffic: TrafficStore?
 
     private func aircraft(_ hex: String, _ flight: String, lat: Double, lon: Double, alt: String) -> ADSBAircraft {
         try! JSONDecoder().decode(ADSBAircraft.self, from: Data("""
@@ -229,6 +231,7 @@ final class HighlightTests: XCTestCase {
         // Start clean: the store is shared between tests.
         TalkStore.shared.feedChanged(item: nil, feed: nil)
         TalkStore.shared.feedChanged(item: nil, feed: Catalog.feed(at: "KBOS"))
+        self.traffic = traffic
         return traffic
     }
 

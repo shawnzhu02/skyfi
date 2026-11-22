@@ -40,6 +40,15 @@ struct ATCFeed: Codable, Identifiable, Hashable {
             case .departure: return "Departure"
             }
         }
+
+        /// Short tag for transcript chips and map bubbles.
+        var tag: String {
+            switch self {
+            case .tower: return "TWR"
+            case .approach: return "APP"
+            case .departure: return "DEP"
+            }
+        }
     }
 
     let mount: String

@@ -79,7 +79,7 @@ struct TranscriptRow: View {
         let label = line.label ?? "?"
         let text: String = {
             switch line.speaker {
-            case .controller: return "TWR ▸ \(label)"
+            case .controller: return "\(line.facility) ▸ \(label)"
             case .pilot: return "\(label) ▸"
             case .unknown: return label
             }

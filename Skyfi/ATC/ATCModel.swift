@@ -54,6 +54,8 @@ final class ATCModel {
     @ObservationIgnored private let engine = WhisperEngine()
     @ObservationIgnored private var job: Task<Void, Never>?
     @ObservationIgnored private var pendingUnload: Task<Void, Never>?
+    /// Whether the model should end up in memory (a tower is tuned). Can change mid-download.
+    @ObservationIgnored private var wantLoad = false
     /// Bumped whenever a job is replaced, so a stale job can't overwrite the state.
     @ObservationIgnored private var generation = 0
 
@@ -84,6 +86,7 @@ final class ATCModel {
     /// Safe to call again after a failure or a pause: finished files are kept and a
     /// half-done file resumes where it stopped.
     func start(load: Bool = true) {
+        if load { wantLoad = true }
         guard Self.deviceSupported, job == nil, state != .ready else { return }
         generation += 1
         let gen = generation
@@ -99,7 +102,7 @@ final class ATCModel {
                     defer { UIApplication.shared.isIdleTimerDisabled = false }
                     try await download()
                 }
-                guard load else {
+                guard wantLoad else {
                     if generation == gen { state = .downloaded }
                     return
                 }
@@ -126,6 +129,9 @@ final class ATCModel {
 
     /// Frees the memory when no tower is tuned; the files stay.
     func unload() {
+        wantLoad = false
+        // A download keeps going (it ends as .downloaded); only a load or a loaded model stops.
+        if case .downloading = state { return }
         guard job != nil || state == .ready else { return }
         stopJob { [engine] in
             await engine.unload()
@@ -134,6 +140,7 @@ final class ATCModel {
     }
 
     func delete() {
+        wantLoad = false
         let folder = Self.folder.deletingLastPathComponent()
         stopJob { [engine] in
             await engine.unload()

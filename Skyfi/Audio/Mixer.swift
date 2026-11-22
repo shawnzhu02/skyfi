@@ -253,6 +253,8 @@ final class Mixer {
     private func dropATCItem() {
         watchdogs["atc"]?.cancel()
         atcPlayer.replaceCurrentItem(with: nil)
+        // A transmission cut off mid-word never closes: un-duck the music.
+        onPause?()
     }
 
     // MARK: Transport

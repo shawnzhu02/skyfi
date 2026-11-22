@@ -143,7 +143,7 @@ final class PlaneAnnotationView: MKAnnotationView {
             group.repeatCount = .infinity
             ring.add(group, forKey: "pulse")
         }
-        let arrow = talk.speaker == .pilot ? "✈︎ " : (talk.speaker == .controller ? "TWR ▸ " : "")
+        let arrow = talk.speaker == .pilot ? "✈︎ " : (talk.speaker == .controller ? "\(talk.facility) ▸ " : "")
         let text = talk.text.count > 42 ? String(talk.text.prefix(40)) + "…" : talk.text
         bubble.text = arrow + text
         bubble.backgroundColor = color.withAlphaComponent(0.85)
