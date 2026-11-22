@@ -272,3 +272,37 @@ final class YouTubeLinkTests: XCTestCase {
         XCTAssertNil(YouTubeLink.videoID(from: "https://www.youtube.com/@LofiGirl"))
     }
 }
+
+@MainActor
+final class PinnedPlaneTests: XCTestCase {
+    private func aircraft(_ hex: String, lat: Double, lon: Double) -> ADSBAircraft {
+        let json: [String: Any] = ["hex": hex, "flight": "BAW1", "lat": lat, "lon": lon, "alt_baro": 37000, "gs": 480, "track": 270]
+        return try! JSONDecoder().decode(ADSBAircraft.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    func testPinnedPlaneSurvivesOutsideTheAirspace() throws {
+        let store = TrafficStore()
+        let bos = try XCTUnwrap(AirportIndex.shared.airport(icao: "KBOS"))
+        store.connect(bos)
+        // Over the Atlantic, far outside Boston's 60 nm.
+        let far = try XCTUnwrap(Plane(aircraft("400abc", lat: 52, lon: -30), now: Date()))
+        store.pin(far)
+        XCTAssertEqual(store.pinnedID, "400abc")
+        store.merge([aircraft("400abc", lat: 52.1, lon: -30.5)], now: Date())
+        XCTAssertNotNil(store.planes["400abc"])
+        // Another plane out there is still dropped.
+        store.merge([aircraft("400def", lat: 52, lon: -30)], now: Date())
+        XCTAssertNil(store.planes["400def"])
+        store.unpin()
+        XCTAssertNil(store.pinnedID)
+        XCTAssertNil(store.planes["400abc"])
+    }
+
+    func testPinKeepsThroughAirportSwitch() throws {
+        let store = TrafficStore()
+        let far = try XCTUnwrap(Plane(aircraft("400abc", lat: 52, lon: -30), now: Date()))
+        store.pin(far)
+        store.connect(try XCTUnwrap(AirportIndex.shared.airport(icao: "KJFK")))
+        XCTAssertNotNil(store.planes["400abc"])
+    }
+}
