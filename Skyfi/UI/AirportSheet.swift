@@ -47,6 +47,7 @@ struct AirportSheet: View {
                 WeatherSection(airport: airport, metar: weather.metar(airport.icao),
                                runways: atisRunways.isEmpty ? RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)) : nil)
                 ATISSection(broadcasts: broadcasts, runways: atisRunways)
+                ForecastSection(taf: TAFStore.shared.taf(airport.icao))
                 FrequenciesSection(frequencies: FrequencyIndex.shared.frequencies(airport.icao))
 
                 Section {
@@ -164,6 +165,7 @@ struct AirportSheet: View {
                 while !Task.isCancelled {
                     await weather.refresh(airport.icao)
                     await atisStore.refresh(airport.icao)
+                    await TAFStore.shared.refresh(airport.icao)
                     try? await Task.sleep(for: .seconds(120))
                 }
             }
@@ -441,5 +443,69 @@ struct FrequenciesSection: View {
                 if open { Text("From OurAirports. Not for navigation.") }
             }
         }
+    }
+}
+
+/// The next 24 hours of the TAF: when the airport turns IFR, the wind shifts, rain arrives.
+struct ForecastSection: View {
+    let taf: TAF?
+    @State private var open = false
+
+    var body: some View {
+        if let taf, !taf.upcoming().isEmpty {
+            Section {
+                DisclosureGroup(isExpanded: $open) {
+                    ForEach(Array(taf.upcoming().enumerated()), id: \.offset) { _, period in
+                        row(period)
+                    }
+                    Text(taf.raw).font(Theme.mono(10)).foregroundStyle(Theme.muted).textSelection(.enabled)
+                } label: {
+                    label(taf)
+                }
+                .tint(Theme.muted)
+            }
+        }
+    }
+
+    /// "Forecast VFR then IFR at 2300Z".
+    private func label(_ taf: TAF) -> some View {
+        let base = taf.upcoming().filter { !$0.isTemporary }
+        let now = base.first?.weather.category
+        let change = base.dropFirst().first { $0.weather.category != now }
+        return HStack(spacing: 6) {
+            Image(systemName: "cloud.sun").foregroundStyle(Theme.muted)
+            Text("Forecast").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+            if let now {
+                chip(now)
+                if let change {
+                    Text("then").font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    chip(change.weather.category)
+                    Text("at \(AirportClock.zulu(change.from))").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                }
+            }
+        }
+    }
+
+    private func row(_ period: TAF.Period) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(period.isTemporary ? (period.change == "PROB" ? "PROB\(period.probability ?? 0)" : "TEMPO") : AirportClock.zulu(period.from))
+                .font(Theme.mono(10, .bold)).foregroundStyle(period.isTemporary ? Theme.muted : Theme.text)
+                .frame(width: 48, alignment: .leading)
+            if !period.isTemporary || period.hasCategoryFields { chip(period.weather.category) }
+            Text([period.weather.windSpeed > 0 || !period.isTemporary ? period.weather.windText : nil,
+                  period.weather.visibilityText, period.weather.weather,
+                  period.weather.ceilingFeet.map { "ceiling \($0.formatted()) ft" }]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 12)).foregroundStyle(period.isTemporary ? Theme.muted : Theme.text)
+        }
+    }
+
+    private func chip(_ category: FlightCategory) -> some View {
+        Text(category.rawValue)
+            .font(Theme.mono(9, .bold))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(WeatherSection.color(category).opacity(0.25), in: Capsule())
+            .foregroundStyle(WeatherSection.color(category))
     }
 }

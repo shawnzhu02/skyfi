@@ -354,3 +354,23 @@ final class RunwayStripTests: XCTestCase {
         XCTAssertNil(RunwayStrip(a: [42], b: [42, -71], ids: ["1"], w: 45).corners())
     }
 }
+
+final class TAFTests: XCTestCase {
+    func testParsesPeriodsAndCategories() throws {
+        let json = #"""
+        [{"icaoId":"KBOS","rawTAF":"TAF KBOS ...","fcsts":[
+          {"timeFrom":1795327200,"timeTo":1795341600,"fcstChange":null,"wdir":190,"wspd":5,"visib":"6+","clouds":[{"cover":"BKN","base":25000}]},
+          {"timeFrom":1795341600,"timeTo":1795356000,"fcstChange":"FM","wdir":180,"wspd":4,"visib":6,"wxString":"BR","clouds":[{"cover":"OVC","base":700}]},
+          {"timeFrom":1795341600,"timeTo":1795345200,"fcstChange":"TEMPO","wdir":null,"wspd":0,"visib":2,"clouds":[]}
+        ]}]
+        """#
+        let taf = try XCTUnwrap(TAF.parse(Data(json.utf8)).first)
+        XCTAssertEqual(taf.periods.count, 3)
+        XCTAssertEqual(taf.periods[0].weather.category, .vfr)
+        XCTAssertEqual(taf.periods[1].weather.category, .ifr)
+        XCTAssertEqual(taf.periods[1].change, "FM")
+        XCTAssertTrue(taf.periods[2].isTemporary)
+        let now = Date(timeIntervalSince1970: 1795342000)
+        XCTAssertEqual(taf.upcoming(now: now).count, 2)
+    }
+}
