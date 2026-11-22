@@ -8,7 +8,7 @@ struct AirportSheet: View {
     @Environment(Mixer.self) private var mixer
 
     var body: some View {
-        let feeds = Catalog.feeds(at: airport.icao)
+        let feed = Catalog.feed(at: airport.icao)
         let approaching = traffic.approaching(airport)
         let events = traffic.events(at: airport)
         let ground = traffic.onGround(at: airport).count
@@ -27,11 +27,7 @@ struct AirportSheet: View {
                 }
 
                 Section("Tower audio") {
-                    if feeds.isEmpty {
-                        Text("No LiveATC feed for this airport in Skyfi yet.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.muted)
-                    }
-                    ForEach(feeds) { feed in
+                    if let feed {
                         let tuned = mixer.feed == feed
                         Button {
                             tuned ? mixer.stopATC() : mixer.tune(feed)
@@ -46,6 +42,9 @@ struct AirportSheet: View {
                                     .foregroundStyle(tuned ? Theme.cyan : Theme.muted)
                             }
                         }
+                    } else {
+                        Text("No LiveATC feed for this airport in Skyfi yet.")
+                            .font(.system(size: 13)).foregroundStyle(Theme.muted)
                     }
                 }
 

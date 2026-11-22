@@ -95,6 +95,9 @@ final class AirportTests: XCTestCase {
             XCTAssertNotNil(index.airport(icao: feed.airport), "\(feed.mount) has no airport")
         }
         XCTAssertFalse(Catalog.presets.isEmpty)
+        let airports = Catalog.feeds.map(\.airport)
+        XCTAssertEqual(airports.count, Set(airports).count, "One feed per airport")
+        XCTAssertEqual(Catalog.feed(at: "KBOS")?.kind, .tower)
     }
 }
 
