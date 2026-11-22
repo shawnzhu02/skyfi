@@ -285,3 +285,9 @@ final class LinkTests: XCTestCase {
         XCTAssertNil(SkyfiLink.airport(from: try XCTUnwrap(URL(string: "skyfi://other/KBOS"))))
     }
 }
+
+final class ClockTests: XCTestCase {
+    func testZulu() {
+        XCTAssertEqual(AirportClock.zulu(Date(timeIntervalSince1970: 1795334040)), "0754Z")
+    }
+}

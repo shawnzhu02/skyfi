@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 struct AirportSheet: View {
@@ -26,6 +27,7 @@ struct AirportSheet: View {
                         Text(airport.name).font(Theme.rounded(18, .bold))
                         Text([airport.icao, airport.iata, airport.city].compactMap { $0 }.joined(separator: " · "))
                             .font(Theme.mono(12)).foregroundStyle(Theme.muted)
+                        AirportClock(airport: airport)
                         if isConnected {
                             Text("\(ground) on the ground · \(approaching.count) on approach")
                                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
@@ -364,5 +366,45 @@ struct ApproachRow: View {
                 route = await RouteLookup.shared.route(callsign: callsign, lat: plane.lat, lon: plane.lon)
             }
         }
+    }
+}
+
+/// "Local 3:42 AM · 0842Z": the airport's own time (zone from Apple's geocoder) and Zulu, as ATC uses.
+struct AirportClock: View {
+    let airport: Airport
+    @State private var zone: TimeZone?
+    private static var zones: [String: TimeZone] = [:]
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            Text([zone.map { "Local \(Self.local(context.date, zone: $0))" }, Self.zulu(context.date)]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(Theme.mono(11)).foregroundStyle(Theme.muted)
+        }
+        .task(id: airport.icao) {
+            if let cached = Self.zones[airport.icao] {
+                zone = cached
+                return
+            }
+            let location = CLLocation(latitude: airport.lat, longitude: airport.lon)
+            if let found = try? await CLGeocoder().reverseGeocodeLocation(location).first?.timeZone {
+                Self.zones[airport.icao] = found
+                zone = found
+            }
+        }
+    }
+
+    static func zulu(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "HHmm'Z'"
+        return f.string(from: date)
+    }
+
+    static func local(_ date: Date, zone: TimeZone) -> String {
+        let f = DateFormatter()
+        f.timeZone = zone
+        f.timeStyle = .short
+        return f.string(from: date)
     }
 }
