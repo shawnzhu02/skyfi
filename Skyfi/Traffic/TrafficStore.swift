@@ -22,6 +22,13 @@ final class TrafficStore {
     private(set) var failing = false
     /// The airport whose planes are shown, or nil (no planes, no requests).
     private(set) var connected: Airport?
+    /// Where each plane has been since it showed up (newest last), for the selected plane's trail.
+    @ObservationIgnored private(set) var trails: [String: [CLLocationCoordinate2D]] = [:]
+    static let maxTrailPoints = 240
+
+    func trail(_ planeID: String?) -> [CLLocationCoordinate2D] {
+        planeID.flatMap { trails[$0] } ?? []
+    }
 
     @ObservationIgnored private var tiles: [Tile] = []
     @ObservationIgnored private var tileFetched: [Tile: Date] = [:]
@@ -112,6 +119,7 @@ final class TrafficStore {
         tileFetched = [:]
         nextTile = 0
         planes = [:]
+        trails = [:]
         errorsInRow = 0
         failing = false
     }
@@ -157,10 +165,20 @@ final class TrafficStore {
                 }
             }
             updated[plane.id] = plane
+            addTrailPoint(plane)
         }
         updated = updated.filter { now.timeIntervalSince($0.value.lastSeen) < Self.staleAfter }
+        if trails.count > updated.count { trails = trails.filter { updated[$0.key] != nil } }
         planes = updated
         lastUpdate = now
+    }
+
+    private func addTrailPoint(_ plane: Plane) {
+        var points = trails[plane.id] ?? []
+        if let last = points.last, Geo.distanceNM(last.latitude, last.longitude, plane.lat, plane.lon) < 0.05 { return }
+        points.append(CLLocationCoordinate2D(latitude: plane.lat, longitude: plane.lon))
+        if points.count > Self.maxTrailPoints { points.removeFirst(points.count - Self.maxTrailPoints) }
+        trails[plane.id] = points
     }
 
     private func record(_ event: AirportEvent) {

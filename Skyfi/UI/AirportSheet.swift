@@ -80,6 +80,26 @@ struct AirportSheet: View {
                     }
                 }
 
+                if mixer.towerInBrowser, feeds.count > 1 {
+                    Section("Feeds") {
+                        ForEach(feeds) { feed in
+                            Button {
+                                mixer.play(feed, at: airport)
+                                onConnect()
+                            } label: {
+                                HStack {
+                                    Text(feed.kind.tag).font(Theme.mono(11, .bold)).foregroundStyle(Theme.cyan).frame(width: 34, alignment: .leading)
+                                    Text(feed.name).font(.system(size: 14)).foregroundStyle(Theme.text)
+                                    Spacer()
+                                    if isConnected, mixer.feed?.mount == feed.mount {
+                                        Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.cyan)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if isConnected {
                     if !approaching.isEmpty {
                         Section("On approach") {

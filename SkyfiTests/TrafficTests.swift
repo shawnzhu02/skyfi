@@ -174,6 +174,11 @@ final class EventTests: XCTestCase {
         store.merge([after], now: Date().addingTimeInterval(10))
         XCTAssertEqual(store.events.count, 1)
         XCTAssertEqual(store.planes.count, 1)
+        // The trail keeps both positions, not the repeat.
+        XCTAssertEqual(store.trail("abc123").count, 2)
+        XCTAssertTrue(store.trail(nil).isEmpty)
+        store.connect(AirportIndex.shared.airport(icao: "KBOS"))
+        XCTAssertTrue(store.trail("abc123").isEmpty, "connecting starts the picture over")
     }
 }
 

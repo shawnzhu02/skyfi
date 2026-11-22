@@ -31,6 +31,8 @@ struct GlobeView: UIViewRepresentable {
     let talking: [String: TalkStore.Talk]
     /// Starred airports (ICAO): an amber star on their labels.
     var favorites: [String] = []
+    /// Where the selected plane has been.
+    var trail: [CLLocationCoordinate2D] = []
     let look: MapLook
     @Binding var selectedPlaneID: String?
     @Binding var selectedAirport: Airport?
@@ -112,6 +114,8 @@ struct GlobeView: UIViewRepresentable {
         private var lastTuned: String?
         private var lastFavorites: [String] = []
         private var rangeRing: MKCircle?
+        private var trailLine: MKPolyline?
+        private var lastTrail: (id: String?, count: Int, last: CLLocationCoordinate2D?) = (nil, 0, nil)
 
         static let maxPlanes = 1500
         static let labelSpan = 1.2
@@ -212,9 +216,25 @@ struct GlobeView: UIViewRepresentable {
                 lastTuned = parent.tunedAirport
                 syncRangeRing(map)
             }
+            syncTrail(map)
             let favoritesChanged = parent.favorites != lastFavorites
             lastFavorites = parent.favorites
             syncAirports(map, force: tunedChanged || favoritesChanged)
+        }
+
+        /// The selected plane's path so far, redrawn when it grows.
+        private func syncTrail(_ map: MKMapView) {
+            let points = parent.selectedPlaneID == nil ? [] : parent.trail
+            let last = points.last
+            if lastTrail.id == parent.selectedPlaneID, lastTrail.count == points.count,
+               lastTrail.last?.latitude == last?.latitude, lastTrail.last?.longitude == last?.longitude { return }
+            lastTrail = (parent.selectedPlaneID, points.count, last)
+            if let line = trailLine { map.removeOverlay(line) }
+            trailLine = nil
+            guard points.count >= 2 else { return }
+            let line = MKPolyline(coordinates: points, count: points.count)
+            trailLine = line
+            map.addOverlay(line, level: .aboveRoads)
         }
 
         /// A faint ring showing the 60 nm the connected airport's planes come from.
@@ -353,6 +373,14 @@ struct GlobeView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let line = overlay as? MKPolyline {
+                let renderer = MKPolylineRenderer(polyline: line)
+                renderer.strokeColor = Theme.uiAmber.withAlphaComponent(0.8)
+                renderer.lineWidth = 2.5
+                renderer.lineDashPattern = [2, 4]
+                renderer.lineCap = .round
+                return renderer
+            }
             guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKCircleRenderer(circle: circle)
             renderer.strokeColor = Theme.uiCyan.withAlphaComponent(0.55)

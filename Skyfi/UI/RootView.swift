@@ -21,7 +21,8 @@ struct RootView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             GlobeView(planes: traffic.planes, tunedAirport: mixer.airport,
-                      talking: talk.talking, favorites: Places.shared.favorites, look: look,
+                      talking: talk.talking, favorites: Places.shared.favorites,
+                      trail: traffic.trail(selectedPlaneID), look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 })
                 .ignoresSafeArea()

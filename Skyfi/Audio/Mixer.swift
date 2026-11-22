@@ -255,13 +255,14 @@ final class Mixer {
     }
 
     /// Browser mode: the tower plays in LiveATC's player page; Skyfi's own tower player stays off.
-    private func connectInBrowser(_ airport: Airport, candidates: [ATCFeed]) {
+    private func connectInBrowser(_ airport: Airport, candidates: [ATCFeed], pick: ATCFeed? = nil) {
         let browser = LiveATCBrowser.shared
-        if self.airport == airport.icao, browser.isOpen {
+        if self.airport == airport.icao, browser.isOpen, pick == nil || pick?.mount == browser.feed?.mount {
             browser.expand()
             return
         }
-        dlog("atc", "connect \(airport.icao) in the LiveATC player: \(candidates[0].mount)")
+        let chosen = pick ?? candidates[0]
+        dlog("atc", "connect \(airport.icao) in the LiveATC player: \(chosen.mount)")
         cancelRetry(isMusic: false)
         watchdogs["atc"]?.cancel()
         chain = nil
@@ -270,9 +271,20 @@ final class Mixer {
         setATCItem(nil)
         atcStatus = .idle
         self.airport = airport.icao
-        feed = candidates[0]
-        browser.open(candidates[0])
+        feed = chosen
+        browser.open(chosen)
         updateNowPlaying()
+    }
+
+    /// Plays one of the airport's feeds in the LiveATC player (connecting to the airport if needed).
+    func play(_ feed: ATCFeed, at airport: Airport) {
+        let candidates = Catalog.feeds(at: airport.icao)
+        guard towerInBrowser, !candidates.isEmpty else {
+            connect(airport)
+            return
+        }
+        Places.shared.noteConnected(airport.icao)
+        connectInBrowser(airport, candidates: candidates, pick: feed)
     }
 
     /// For an airport Skyfi has no feed list for: connects its planes and opens LiveATC's page
