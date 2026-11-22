@@ -90,6 +90,9 @@ enum Phraseology {
         return out
     }
 
+    /// Nothing said on frequency is bigger than this (FL600 = 60000 ft).
+    static let numberCap = 1_000_000
+
     /// Value of a run of number words. Digit-by-digit unless it says hundred or thousand.
     static func value(of run: [String]) -> String {
         if run.contains("hundred") || run.contains("thousand") {
@@ -98,13 +101,14 @@ enum Phraseology {
                 if let v = units[word] ?? teens[word] ?? tens[word] ?? Int(word) {
                     current += v
                 } else if word == "hundred" {
-                    current = (current == 0 ? 1 : current) * 100
+                    // Clamped: a hallucinated "hundred hundred hundred…" must not overflow.
+                    current = min((current == 0 ? 1 : current) * 100, Self.numberCap)
                 } else if word == "thousand" {
-                    total += (current == 0 ? 1 : current) * 1000
+                    total = min(total + min(current == 0 ? 1 : current, Self.numberCap) * 1000, Self.numberCap)
                     current = 0
                 }
             }
-            return String(total + current)
+            return String(min(total + current, Self.numberCap))
         }
         var digits = ""
         var i = 0

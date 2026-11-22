@@ -23,8 +23,8 @@ struct TranscriptStrip: View {
                     }
                 case .downloading(let fraction):
                     row(icon: "arrow.down.circle", text: "Downloading ATC speech model… \(Int(fraction * 100))%")
-                case .preparing:
-                    row(icon: "cpu", text: "Preparing ATC speech model… (first time takes a minute)")
+                case .preparing, .downloaded:
+                    row(icon: "cpu", text: "Loading ATC speech model… (first time takes a minute)")
                 case .notDownloaded, .failed:
                     Button(action: onOpen) {
                         row(icon: "text.bubble", text: "See who's talking: get the ATC speech model")
@@ -96,6 +96,7 @@ struct TranscriptRow: View {
 /// Full transcript, the model download, settings and match debug info.
 struct TranscriptSheet: View {
     @Environment(TalkStore.self) private var talk
+    @Environment(Mixer.self) private var mixer
     var onPick: (String) -> Void
     @State private var showDebug = false
 
@@ -144,7 +145,8 @@ struct TranscriptSheet: View {
         switch talk.model.state {
         case .notDownloaded:
             Button {
-                talk.model.start()
+                // Download now; load into memory only if a tower is tuned.
+                talk.model.start(load: mixer.feed != nil)
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Download ATC speech model (\(size))")
@@ -157,13 +159,21 @@ struct TranscriptSheet: View {
                 Text("Downloading… \(Int(fraction * 100))%")
                 ProgressView(value: fraction)
                 Button("Pause") { talk.model.cancel() }.font(.system(size: 13))
+                Text("Keep Skyfi open until it finishes. Pausing keeps what's downloaded.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
         case .preparing:
             HStack {
                 ProgressView()
-                Text("Preparing the model. The first time takes a minute.").font(.system(size: 13))
+                Text("Loading the model. The first time takes a minute.").font(.system(size: 13))
             }
-            .onAppear { talk.model.start() }
+        case .downloaded:
+            HStack {
+                Label("ATC speech model downloaded", systemImage: "checkmark.circle").foregroundStyle(.green)
+                Spacer()
+                Button("Delete", role: .destructive) { talk.model.delete() }.font(.system(size: 13))
+            }
+            Text("It loads when you tune a tower.").font(.system(size: 11)).foregroundStyle(Theme.muted)
         case .ready:
             HStack {
                 Label("ATC speech model ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -173,7 +183,7 @@ struct TranscriptSheet: View {
         case .failed(let message):
             VStack(alignment: .leading, spacing: 4) {
                 Text("Model problem: \(message)").font(.system(size: 13)).foregroundStyle(.red)
-                Button("Try again") { talk.model.start() }
+                Button("Try again") { talk.model.start(load: mixer.feed != nil) }
             }
         case .unsupported:
             Text("This iPhone doesn't have enough memory for the ATC speech model (needs 6 GB, iPhone 13 Pro or newer).")

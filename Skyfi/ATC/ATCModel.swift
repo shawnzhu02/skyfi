@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 import WhisperKit
 
 /// The on-device ATC speech model: Whisper medium.en fine-tuned on air traffic control
@@ -13,6 +14,8 @@ final class ATCModel {
     enum State: Equatable {
         case notDownloaded
         case downloading(Double)
+        /// On disk, not in memory. Loads when a tower is tuned.
+        case downloaded
         case preparing
         case ready
         case failed(String)
@@ -50,6 +53,9 @@ final class ATCModel {
     private(set) var state: State = .notDownloaded
     @ObservationIgnored private let engine = WhisperEngine()
     @ObservationIgnored private var job: Task<Void, Never>?
+    @ObservationIgnored private var pendingUnload: Task<Void, Never>?
+    /// Bumped whenever a job is replaced, so a stale job can't overwrite the state.
+    @ObservationIgnored private var generation = 0
 
     static var folder: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -60,7 +66,7 @@ final class ATCModel {
         if !Self.deviceSupported {
             state = .unsupported
         } else if Self.isDownloaded {
-            state = .preparing
+            state = .downloaded
         }
     }
 
@@ -74,34 +80,79 @@ final class ATCModel {
 
     var isReady: Bool { state == .ready }
 
-    /// Downloads what's missing, then loads the model. Safe to call again after a failure.
-    func start() {
+    /// Downloads what's missing; with `load`, also loads the model into memory.
+    /// Safe to call again after a failure or a pause: finished files are kept and a
+    /// half-done file resumes where it stopped.
+    func start(load: Bool = true) {
         guard Self.deviceSupported, job == nil, state != .ready else { return }
+        generation += 1
+        let gen = generation
+        // Runs after any unload or older job has fully finished, so the engine never
+        // unloads a model this job just loaded.
+        let before = pendingUnload
         job = Task {
-            defer { job = nil }
+            defer { if generation == gen { job = nil } }
+            await before?.value
             do {
-                if !Self.isDownloaded { try await download() }
-                state = .preparing
+                if !Self.isDownloaded {
+                    UIApplication.shared.isIdleTimerDisabled = true
+                    defer { UIApplication.shared.isIdleTimerDisabled = false }
+                    try await download()
+                }
+                guard load else {
+                    if generation == gen { state = .downloaded }
+                    return
+                }
+                if generation == gen { state = .preparing }
                 try await engine.load(folder: Self.folder)
-                state = .ready
-            } catch is CancellationError {
-                state = Self.isDownloaded ? .preparing : .notDownloaded
+                // The load itself can't be interrupted: check whether we were asked to stop meanwhile.
+                try Task.checkCancellation()
+                if generation == gen { state = .ready }
             } catch {
-                state = .failed(error.localizedDescription)
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    await engine.unload()
+                    if generation == gen { state = Self.isDownloaded ? .downloaded : .notDownloaded }
+                } else if generation == gen {
+                    state = .failed(error.localizedDescription)
+                }
             }
         }
     }
 
+    /// Pauses a download (progress is kept) or stops a load.
     func cancel() {
         job?.cancel()
     }
 
-    func delete() {
-        job?.cancel()
-        Task {
+    /// Frees the memory when no tower is tuned; the files stay.
+    func unload() {
+        guard job != nil || state == .ready else { return }
+        stopJob { [engine] in
             await engine.unload()
-            try? FileManager.default.removeItem(at: Self.folder.deletingLastPathComponent())
-            state = Self.deviceSupported ? .notDownloaded : .unsupported
+        }
+        if Self.isDownloaded { state = .downloaded }
+    }
+
+    func delete() {
+        let folder = Self.folder.deletingLastPathComponent()
+        stopJob { [engine] in
+            await engine.unload()
+            try? FileManager.default.removeItem(at: folder)
+        }
+        state = Self.deviceSupported ? .notDownloaded : .unsupported
+    }
+
+    /// Cancels the running job and queues `work` after it (and after any earlier unload).
+    private func stopJob(then work: @escaping @Sendable () async -> Void) {
+        let old = job
+        let before = pendingUnload
+        old?.cancel()
+        job = nil
+        generation += 1
+        pendingUnload = Task {
+            await before?.value
+            await old?.value
+            await work()
         }
     }
 
@@ -120,10 +171,22 @@ final class ATCModel {
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             let url = URL(string: "https://huggingface.co/\(Self.repo)/resolve/\(Self.revision)/\(Self.variant)/\(file.path)")!
             let base = done
-            let temp = try await FileDownload.fetch(url) { [weak self] written in
-                Task { @MainActor in
-                    self?.state = .downloading(Double(base + written) / Double(total))
+            // A paused or dropped download leaves resume data next to the file.
+            let resumeFile = target.appendingPathExtension("resume")
+            let resumeData = try? Data(contentsOf: resumeFile)
+            try? FileManager.default.removeItem(at: resumeFile)
+            let temp: URL
+            do {
+                temp = try await FileDownload.fetch(url, resumeData: resumeData) { [weak self] written in
+                    Task { @MainActor in
+                        self?.state = .downloading(Double(base + written) / Double(total))
+                    }
                 }
+            } catch {
+                if let data = (error as? URLError)?.downloadTaskResumeData {
+                    try? data.write(to: resumeFile)
+                }
+                throw error
             }
             try? FileManager.default.removeItem(at: target)
             try FileManager.default.moveItem(at: temp, to: target)
@@ -188,14 +251,14 @@ actor WhisperEngine {
 
 /// One file download with byte progress. Returns a temp file URL that the caller moves.
 enum FileDownload {
-    static func fetch(_ url: URL, progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
+    static func fetch(_ url: URL, resumeData: Data? = nil, progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
         let delegate = ProgressDelegate(progress: progress)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 delegate.continuation = continuation
-                let task = session.downloadTask(with: url)
+                let task = resumeData.map { session.downloadTask(withResumeData: $0) } ?? session.downloadTask(with: url)
                 delegate.task = task
                 task.resume()
             }

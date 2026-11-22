@@ -13,6 +13,12 @@ final class PhraseologyTests: XCTestCase {
         XCTAssertEqual(Phraseology.tokens("Speedbird 213 heavy, uh, contact departure"), ["speedbird", "213", "contact", "departure"])
     }
 
+    func testRepeatedHundredsDoNotCrash() {
+        // Whisper sometimes loops on one word.
+        _ = Phraseology.tokens(String(repeating: "hundred ", count: 40))
+        _ = Phraseology.tokens("nine " + String(repeating: "hundred ", count: 12) + "thousand thousand thousand")
+    }
+
     func testAlphanumericSplit() {
         XCTAssertEqual(Phraseology.tokens("runway 22L"), ["runway", "22", "lima"])
         XCTAssertEqual(Phraseology.tokens("N123AB"), ["november", "123", "alpha", "bravo"])

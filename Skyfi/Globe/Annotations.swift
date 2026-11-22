@@ -119,7 +119,7 @@ final class PlaneAnnotationView: MKAnnotationView {
                 ring.removeAllAnimations()
                 ring.isHidden = true
                 bubble.isHidden = true
-                zPriority = style == .selected ? .max : .defaultUnselected
+                zPriority = style == .selected ? .max : (style == .approach ? .defaultSelected : .defaultUnselected)
             }
             return
         }

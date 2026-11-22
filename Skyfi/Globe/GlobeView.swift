@@ -81,6 +81,7 @@ struct GlobeView: UIViewRepresentable {
         private var planeAnnotations: [String: PlaneAnnotation] = [:]
         private var airportAnnotations: [String: AirportAnnotation] = [:]
         private var ticker: Timer?
+        private var appObservers: [NSObjectProtocol] = []
         private var lastAirportRegion: MKCoordinateRegion?
         private let arrow = UIImageView(image: UIImage(systemName: "location.north.fill",
                                                        withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold)))
@@ -94,9 +95,24 @@ struct GlobeView: UIViewRepresentable {
         }
 
         func startTicker() {
+            guard ticker == nil else { return }
             ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.tick() }
             }
+            guard appObservers.isEmpty else { return }
+            // No gliding planes while the screen is off or the app is in the background: audio keeps going, the map doesn't.
+            let center = NotificationCenter.default
+            appObservers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pauseTicker() }
+            })
+            appObservers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.startTicker() }
+            })
+        }
+
+        private func pauseTicker() {
+            ticker?.invalidate()
+            ticker = nil
         }
 
         func stopTicker() {
@@ -122,6 +138,10 @@ struct GlobeView: UIViewRepresentable {
                 return
             }
             let point = map.convert(plane.position(at: Date()), toPointTo: map)
+            guard point.x.isFinite, point.y.isFinite else {
+                arrow.isHidden = true
+                return
+            }
             let safe = map.bounds.inset(by: UIEdgeInsets(top: 120, left: 24, bottom: 200, right: 24))
             if safe.contains(point) || map.bounds.contains(point) {
                 arrow.isHidden = true

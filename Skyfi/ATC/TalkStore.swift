@@ -43,7 +43,8 @@ final class TalkStore {
     var enabled: Bool = UserDefaults.standard.object(forKey: "talk.enabled") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(enabled, forKey: "talk.enabled")
-            if enabled, ATCModel.isDownloaded { model.start() }
+            if enabled, ATCModel.isDownloaded, feedAirport != nil { model.start() }
+            if !enabled { model.unload() }
         }
     }
     var duck: Bool = UserDefaults.standard.object(forKey: "talk.duck") as? Bool ?? true {
@@ -79,7 +80,17 @@ final class TalkStore {
         Mixer.shared.onATCItemChange = { [weak self] item, feed in
             self?.feedChanged(item: item, feed: feed)
         }
-        if enabled, ATCModel.isDownloaded { model.start() }
+        Mixer.shared.onPause = { [weak self] in
+            self?.stopTransmitting()
+        }
+    }
+
+    /// A transmission can't finish once its audio stops, so close it by hand.
+    private func stopTransmitting() {
+        let squelch = self.squelch
+        tap.queue.async { squelch.reset() }
+        if transmitting { transmitting = false }
+        Mixer.shared.setDucked(false)
     }
 
     func connect(traffic: TrafficStore) {
@@ -87,8 +98,7 @@ final class TalkStore {
     }
 
     private func feedChanged(item: AVPlayerItem?, feed: ATCFeed?) {
-        let squelch = self.squelch
-        tap.queue.async { squelch.reset() }
+        stopTransmitting()
         tap.attach(to: item)
         let airport = feed.flatMap { AirportIndex.shared.airport(icao: $0.airport) }
         if airport?.icao != feedAirport?.icao {
@@ -98,9 +108,11 @@ final class TalkStore {
         feedAirport = airport
         feedKind = feed?.kind ?? .tower
         traffic?.setPinned(airport, radiusNM: feedKind == .tower ? 20 : Int(Self.candidateRadiusNM))
-        if item == nil, transmitting {
-            transmitting = false
-            Mixer.shared.setDucked(false)
+        // The 1.5 GB model only sits in memory while a tower is tuned.
+        if feed == nil {
+            model.unload()
+        } else if enabled, ATCModel.isDownloaded {
+            model.start()
         }
     }
 

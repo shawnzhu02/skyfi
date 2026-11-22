@@ -38,7 +38,7 @@ final class ATCTap {
         captured.withLock { $0.removeAll() }
         guard let item else { return }
         attachTask = Task { @MainActor [weak self] in
-            for _ in 0..<40 {
+            for _ in 0..<600 {
                 if Task.isCancelled { return }
                 if let track = item.tracks.compactMap(\.assetTrack).first(where: { $0.mediaType == .audio }) {
                     self?.install(on: item, track: track)
