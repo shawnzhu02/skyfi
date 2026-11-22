@@ -136,8 +136,9 @@ final class TrafficStore {
         tileFetched = [:]
         nextTile = 0
         planes = pinnedID.flatMap { id in planes[id].map { [id: $0] } } ?? [:]
-        trails = [:]
-        trailTimes = [:]
+        // The pinned plane keeps its trail across airport switches.
+        trails = pinnedID.flatMap { id in trails[id].map { [id: $0] } } ?? [:]
+        trailTimes = pinnedID.flatMap { id in trailTimes[id].map { [id: $0] } } ?? [:]
         errorsInRow = 0
         failing = false
     }
@@ -166,7 +167,10 @@ final class TrafficStore {
         unpin()
         dlog("traffic", "pinned \(plane.title) (\(plane.id))")
         pinnedID = plane.id
-        planes[plane.id] = plane
+        // The search result may be minutes old; count it as seen now so the next poll doesn't drop it as stale.
+        var fresh = plane
+        fresh.lastSeen = Date()
+        planes[plane.id] = fresh
         addTrailPoint(plane)
         setPinnedTile(lat: plane.lat, lon: plane.lon)
     }

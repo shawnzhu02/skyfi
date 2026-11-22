@@ -26,7 +26,8 @@ struct RootView: View {
     /// The connected airport and its current ATIS letter(s).
     private var atisKey: String {
         guard let icao = traffic.connected?.icao else { return "" }
-        return icao + "|" + ATISStore.shared.atis(icao).map(\.code).joined()
+        // Sorted "arr:L" pairs, so the API listing them in another order isn't a change.
+        return icao + "|" + ATISStore.shared.atis(icao).map { "\($0.kind.rawValue):\($0.code)" }.sorted().joined(separator: ",")
     }
     /// Callsign of a plane picked from the worldwide search, shown while it loads.
     @State private var pendingTitle: String?
@@ -208,7 +209,10 @@ struct RootView: View {
                 mixer.connectViaLiveATC(airport)
             }
         }
-        .onChange(of: selectedPlaneID) { _, _ in following = false }
+        .onChange(of: selectedPlaneID) { _, _ in
+            following = false
+            selectedEvent = nil
+        }
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
         .sensoryFeedback(.impact, trigger: selectedEvent?.id) { _, new in new != nil }
@@ -221,7 +225,11 @@ struct RootView: View {
                   let airport = traffic.connected else { return }
             let broadcasts = ATISStore.shared.atis(airport.icao)
             let runways = ATIS.runways(in: broadcasts, airport: airport)
-            var text = "\(airport.code) information \(broadcasts.first?.code ?? "") now current"
+            // Name the broadcast whose letter changed (arrival and departure ATIS change separately).
+            let before = Set(oldParts[1].split(separator: ",").map(String.init))
+            let changed = broadcasts.first { !before.contains("\($0.kind.rawValue):\($0.code)") } ?? broadcasts.first
+            let which = changed?.kind == .arrival ? " arrival" : (changed?.kind == .departure ? " departure" : "")
+            var text = "\(airport.code)\(which) information \(changed?.code ?? "") now current"
             if !runways.landing.isEmpty { text += " · landing \(runways.landing.joined(separator: ", "))" }
             dlog("weather", text)
             withAnimation { notice = text }
@@ -230,9 +238,10 @@ struct RootView: View {
                 if notice == text { withAnimation { notice = nil } }
             }
         }
-        .onChange(of: traffic.events.first?.id) { _, _ in
-            // The plane you're watching touched down or lifted off.
-            guard let event = traffic.events.first, event.planeID == selectedPlaneID else { return }
+        .onChange(of: traffic.events.first(where: { $0.planeID == selectedPlaneID })?.id) { _, _ in
+            // The plane you're watching touched down or lifted off (just now, not before you picked it).
+            guard let event = traffic.events.first(where: { $0.planeID == selectedPlaneID }),
+                  Date().timeIntervalSince(event.time) < 60 else { return }
             withAnimation { selectedEvent = event }
             Task {
                 try? await Task.sleep(for: .seconds(8))

@@ -42,6 +42,8 @@ final class LiveATCBrowser {
 
     @ObservationIgnored private let pathMonitor = NWPathMonitor()
     @ObservationIgnored private var online = true
+    /// The network came back while Skyfi had the page paused: reload when you resume.
+    @ObservationIgnored private var reloadOnResume = false
 
     private init() {
         let config = WKWebViewConfiguration()
@@ -144,6 +146,13 @@ final class LiveATCBrowser {
         dlog("web", value ? "media suspended (Skyfi pause)" : "media resumed")
         webView.setAllMediaPlaybackSuspended(value, completionHandler: nil)
         if value, media == .playing { setMedia(.paused) }
+        if !value, reloadOnResume {
+            reloadOnResume = false
+            if case .failed = media {
+                dlog("web", "reloading the player (network came back while paused)")
+                webView.reload()
+            }
+        }
     }
 
     func close() {
@@ -265,7 +274,10 @@ final class LiveATCBrowser {
         defer { online = up }
         guard up, !online else { return }
         dlog("web", "network back")
-        if isOpen, !suspended, case .failed = media {
+        guard isOpen, case .failed = media else { return }
+        if suspended {
+            reloadOnResume = true
+        } else {
             dlog("web", "reloading the player after the network came back")
             webView.reload()
         }
