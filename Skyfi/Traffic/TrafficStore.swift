@@ -47,6 +47,11 @@ final class TrafficStore {
     @ObservationIgnored private let client = ADSBClient()
     @ObservationIgnored private let index: AirportIndex
     @ObservationIgnored private var errorsInRow = 0
+    /// A plane picked from the worldwide search: polled in its own small circle that follows it,
+    /// and kept on the map even outside the connected airport's airspace.
+    @ObservationIgnored private(set) var pinnedID: String?
+    @ObservationIgnored private var pinnedTile: Tile?
+    nonisolated static let pinnedRadiusNM = 25
 
     /// Roughly where an airport's approach and departure controllers work.
     nonisolated static let rangeNM = 60
@@ -100,12 +105,15 @@ final class TrafficStore {
 
     private func poll(_ tile: Tile) async {
         do {
-            let aircraft = try await client.fetch(lat: tile.lat, lon: tile.lon, radiusNM: tile.radiusNM, provider: provider)
+            var aircraft = try await client.fetch(lat: tile.lat, lon: tile.lon, radiusNM: tile.radiusNM, provider: provider)
             guard tiles.contains(tile) else { return }
             tileFetched[tile] = Date()
             errorsInRow = 0
             failing = false
+            // The pinned circle is only there for the pinned plane, not its neighbours.
+            if tile == pinnedTile { aircraft = aircraft.filter { $0.hex.lowercased() == pinnedID } }
             merge(aircraft, now: Date())
+            followPinned()
         } catch {
             errorsInRow += 1
             if errorsInRow <= 2 || errorsInRow % 10 == 0 {
@@ -124,10 +132,10 @@ final class TrafficStore {
     func connect(_ airport: Airport?) {
         guard airport?.icao != connected?.icao else { return }
         connected = airport
-        tiles = airport.map { [Tile(lat: $0.lat, lon: $0.lon, radiusNM: Self.rangeNM)] } ?? []
+        tiles = (airport.map { [Tile(lat: $0.lat, lon: $0.lon, radiusNM: Self.rangeNM)] } ?? []) + (pinnedTile.map { [$0] } ?? [])
         tileFetched = [:]
         nextTile = 0
-        planes = [:]
+        planes = pinnedID.flatMap { id in planes[id].map { [id: $0] } } ?? [:]
         trails = [:]
         trailTimes = [:]
         errorsInRow = 0
@@ -151,13 +159,59 @@ final class TrafficStore {
         return index.nearest(lat: plane.lat, lon: plane.lon, withinNM: groundNM)?.icao == airport.icao
     }
 
+    // MARK: Pinned plane
+
+    /// Shows a plane from anywhere (the worldwide search) and keeps polling around it.
+    func pin(_ plane: Plane) {
+        unpin()
+        dlog("traffic", "pinned \(plane.title) (\(plane.id))")
+        pinnedID = plane.id
+        planes[plane.id] = plane
+        addTrailPoint(plane)
+        setPinnedTile(lat: plane.lat, lon: plane.lon)
+    }
+
+    func unpin() {
+        guard let id = pinnedID else { return }
+        pinnedID = nil
+        if let tile = pinnedTile { tiles.removeAll { $0 == tile } }
+        pinnedTile = nil
+        nextTile = 0
+        // Off the map unless it's in the connected airport's airspace anyway.
+        if let plane = planes[id], connected.map({ !Self.inRange(plane, of: $0) }) ?? true {
+            planes[id] = nil
+            trails[id] = nil
+        }
+    }
+
+    /// Moves the pinned circle along with the plane (an airliner covers 25 nm in about 3 minutes).
+    private func followPinned() {
+        guard let id = pinnedID else { return }
+        guard let plane = planes[id] else {
+            dlog("traffic", "pinned \(id) went stale")
+            unpin()
+            return
+        }
+        if let tile = pinnedTile, Geo.distanceNM(tile.lat, tile.lon, plane.lat, plane.lon) > Double(Self.pinnedRadiusNM) / 2 {
+            setPinnedTile(lat: plane.lat, lon: plane.lon)
+        }
+    }
+
+    private func setPinnedTile(lat: Double, lon: Double) {
+        if let old = pinnedTile { tiles.removeAll { $0 == old } }
+        let tile = Tile(lat: (lat * 100).rounded() / 100, lon: (lon * 100).rounded() / 100, radiusNM: Self.pinnedRadiusNM)
+        pinnedTile = tile
+        tiles.append(tile)
+        nextTile = 0
+    }
+
     // MARK: Merge
 
     func merge(_ aircraft: [ADSBAircraft], now: Date) {
         var updated = planes
         for a in aircraft {
             guard var plane = Plane(a, now: now) else { continue }
-            if let connected, !Self.inRange(plane, of: connected) {
+            if let connected, plane.id != pinnedID, !Self.inRange(plane, of: connected) {
                 // Left the airport's airspace (or never in it): drop it from the picture.
                 updated[plane.id] = nil
                 continue

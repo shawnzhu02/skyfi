@@ -61,7 +61,13 @@ final class DebugLog {
     func clear() {
         entries.removeAll()
         previous = ""
-        if let handle { writer.async { try? handle.truncate(atOffset: 0) } }
+        // Truncating doesn't move the write position; seek back too, or the next line leaves a gap.
+        if let handle {
+            writer.async {
+                try? handle.truncate(atOffset: 0)
+                try? handle.seek(toOffset: 0)
+            }
+        }
     }
 
     /// The whole report: device and app details, this launch, then the previous launch.

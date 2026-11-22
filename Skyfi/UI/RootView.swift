@@ -168,6 +168,10 @@ struct RootView: View {
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
         .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
+        .onChange(of: selectedPlaneID) { _, new in
+            // Picked something else (or closed the card): stop polling around a pinned plane.
+            if let pinned = traffic.pinnedID, pinned != new { traffic.unpin() }
+        }
         .onChange(of: selectedPlane?.id) { old, new in
             // The plane left the picture (out of range or no reports): drop the card and stop following.
             // A plane picked from the worldwide search isn't loaded yet, so only the one that vanished counts.
@@ -251,6 +255,8 @@ struct RootView: View {
             ActivityList(events: traffic.events, planes: Array(traffic.planes.values), onPickPlane: { plane in
                 showActivity = false
                 pendingTitle = plane.title
+                // From the worldwide search: not in this airport's picture, so poll around it.
+                if traffic.planes[plane.id] == nil { traffic.pin(plane) }
                 selectedPlaneID = plane.id
                 focus = MapFocus(plane.coordinate)
             }) { event in
@@ -485,7 +491,7 @@ struct ActivityList: View {
     @State var worldwide: [Plane] = []
 
     /// Military, rare types and emergencies on the map right now, emergencies first.
-    var notable: [Plane] {
+    var notableNow: [Plane] {
         planes.filter { $0.notable != nil }
             .sorted { ($0.emergency == nil ? 1 : 0, $0.title) < ($1.emergency == nil ? 1 : 0, $1.title) }
             .prefix(20).map { $0 }
@@ -494,6 +500,7 @@ struct ActivityList: View {
     @State var searchedFor = ""
 
     var body: some View {
+        let notable = notableNow
         NavigationStack {
             Group {
                 if !query.isEmpty {
@@ -558,7 +565,10 @@ struct ActivityList: View {
             .searchable(text: $query, prompt: "Find a flight (DAL234, N123AB, A321)")
             .onSubmit(of: .search) { Task { await searchWorldwide() } }
             .onChange(of: query) { _, _ in
-                if query.uppercased() != searchedFor { worldwide = [] }
+                if query.uppercased() != searchedFor {
+                    worldwide = []
+                    searching = false
+                }
             }
         }
     }
@@ -744,10 +754,12 @@ extension ActivityList {
 
     func searchWorldwide() async {
         let q = query.uppercased()
-        guard !ADSBClient.Lookup.from(q).isEmpty, !searching else { return }
+        guard !ADSBClient.Lookup.from(q).isEmpty else { return }
         searching = true
         dlog("traffic", "worldwide search \(q)")
         let found = await ADSBClient().find(q)
+        // You typed something else meanwhile: this answer is for an old question.
+        guard query.uppercased() == q else { return }
         worldwide = found.compactMap { Plane($0, now: Date()) }
         searchedFor = q
         searching = false

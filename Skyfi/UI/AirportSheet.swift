@@ -529,9 +529,15 @@ struct ForecastSection: View {
 struct NearbyTowersSection: View {
     let airport: Airport
     var onPick: (Airport) -> Void
+    /// Worked out once per airport, not on every redraw.
+    @MainActor private static var cache: [String: [(Airport, Double)]] = [:]
 
     var body: some View {
-        let nearby = Self.nearby(airport)
+        let nearby = Self.cache[airport.icao] ?? {
+            let found = Self.nearby(airport)
+            Self.cache[airport.icao] = found
+            return found
+        }()
         if !nearby.isEmpty {
             Section("Nearby towers with a feed") {
                 ForEach(nearby, id: \.0.icao) { other, distance in
