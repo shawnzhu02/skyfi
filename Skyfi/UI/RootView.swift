@@ -137,9 +137,10 @@ struct RootView: View {
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
         .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
-        .onChange(of: selectedPlane == nil) { _, gone in
+        .onChange(of: selectedPlane?.id) { old, new in
             // The plane left the picture (out of range or no reports): drop the card and stop following.
-            if gone, selectedPlaneID != nil {
+            // A plane picked from the worldwide search isn't loaded yet, so only the one that vanished counts.
+            if new == nil, let old, old == selectedPlaneID {
                 selectedPlaneID = nil
                 following = false
             }
@@ -424,6 +425,9 @@ struct ActivityList: View {
     var onPickPlane: (Plane) -> Void = { _ in }
     var onPick: (AirportEvent) -> Void
     @State private var query = ""
+    @State var worldwide: [Plane] = []
+    @State var searching = false
+    @State var searchedFor = ""
 
     var body: some View {
         NavigationStack {
@@ -431,7 +435,7 @@ struct ActivityList: View {
                 if !query.isEmpty {
                     let found = Self.search(planes, query)
                     if found.isEmpty {
-                        ContentUnavailableView.search(text: query)
+                        worldwideResults
                     } else {
                         List(found) { plane in
                             Button { onPickPlane(plane) } label: {
@@ -465,6 +469,10 @@ struct ActivityList: View {
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, prompt: "Find a flight (DAL234, N123AB, A321)")
+            .onSubmit(of: .search) { Task { await searchWorldwide() } }
+            .onChange(of: query) { _, _ in
+                if query.uppercased() != searchedFor { worldwide = [] }
+            }
         }
     }
 
@@ -599,5 +607,61 @@ struct ProgressRow: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(progress.from.code) to \(progress.to.code), \(Int(progress.fraction * 100)) percent flown, \(Int(progress.remainingNM)) nautical miles to go")
+    }
+}
+
+extension ActivityList {
+    /// Not on the map here: offer adsb.lol's worldwide lookup, then list what it finds.
+    @ViewBuilder var worldwideResults: some View {
+        if searching {
+            ProgressView("Searching worldwide…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if !worldwide.isEmpty {
+            List(worldwide) { plane in
+                Button { onPickPlane(plane) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(plane.title).font(Theme.mono(13)).foregroundStyle(Theme.text)
+                            if let type = plane.type { Text(type).font(Theme.mono(11)).foregroundStyle(Theme.muted) }
+                            Spacer()
+                            Text(Format.altitude(plane)).font(Theme.mono(12)).foregroundStyle(Theme.amber)
+                        }
+                        Text(nearText(plane)).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                    }
+                }
+                .listRowBackground(Color.clear)
+            }
+            .listStyle(.plain)
+        } else if searchedFor == query.uppercased(), !query.isEmpty {
+            ContentUnavailableView.search(text: query)
+        } else {
+            ContentUnavailableView {
+                Label("Not near you", systemImage: "globe")
+            } description: {
+                Text("Search every flight in the world for \(query.uppercased()).")
+            } actions: {
+                Button("Search worldwide") { Task { await searchWorldwide() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.cyan)
+            }
+        }
+    }
+
+    func searchWorldwide() async {
+        let q = query.uppercased()
+        guard !ADSBClient.Lookup.from(q).isEmpty, !searching else { return }
+        searching = true
+        dlog("traffic", "worldwide search \(q)")
+        let found = await ADSBClient().find(q)
+        worldwide = found.compactMap { Plane($0, now: Date()) }
+        searchedFor = q
+        searching = false
+    }
+
+    /// "Near London Heathrow Airport", or the coordinates out over the ocean.
+    func nearText(_ plane: Plane) -> String {
+        if let airport = AirportIndex.shared.nearest(lat: plane.lat, lon: plane.lon, withinNM: 150) {
+            return "Near \(airport.name)"
+        }
+        return String(format: "%.1f°, %.1f°", plane.lat, plane.lon)
     }
 }
