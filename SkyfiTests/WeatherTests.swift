@@ -152,3 +152,19 @@ final class FacilityTests: XCTestCase {
         XCTAssertEqual(LikelyFacility.guess(plane(lat: 42.40, lon: -71.00, alt: 35000), airport: boston), .center)
     }
 }
+
+final class ETATests: XCTestCase {
+    func testMinutesToLanding() throws {
+        let boston = try XCTUnwrap(AirportIndex.shared.airport(icao: "KBOS"))
+        func plane(speed: Double?) -> Plane {
+            var json: [String: Any] = ["hex": "abc123", "flight": "DAL234", "lat": 42.53, "lon": -71.0, "alt_baro": 5000, "track": 180]
+            if let speed { json["gs"] = speed }
+            let data = try! JSONSerialization.data(withJSONObject: json)
+            return Plane(try! JSONDecoder().decode(ADSBAircraft.self, from: data), now: Date())!
+        }
+        // ~10 nm out at 200 kt: 3 min flying plus 1 for the slowdown.
+        XCTAssertEqual(EventDetector.minutesToLanding(plane(speed: 200), at: boston), 4)
+        XCTAssertNil(EventDetector.minutesToLanding(plane(speed: 20), at: boston))
+        XCTAssertNil(EventDetector.minutesToLanding(plane(speed: nil), at: boston))
+    }
+}
