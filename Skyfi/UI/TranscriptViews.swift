@@ -8,7 +8,8 @@ struct TranscriptStrip: View {
     var onOpen: () -> Void
 
     var body: some View {
-        if mixer.feed != nil, talk.enabled {
+        // Who's talking listens to Skyfi's own tower player; LiveATC's page can't be heard by the app.
+        if mixer.feed != nil, talk.enabled, !mixer.towerInBrowser {
             VStack(alignment: .leading, spacing: 6) {
                 switch talk.model.state {
                 case .ready:

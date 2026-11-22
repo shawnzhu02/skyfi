@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var showMixer = false
     @State private var showActivity = false
     @State private var showTranscript = false
+    @State private var browser = LiveATCBrowser.shared
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
@@ -33,6 +34,10 @@ struct RootView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 TranscriptStrip(onPick: pick(planeID:), onOpen: { showTranscript = true })
+                if browser.isOpen, !browser.expanded {
+                    LiveATCMiniBar()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 MixerBar { showMixer = true }
                 Text("Traffic: \(traffic.provider.rawValue) · ATC: LiveATC.net")
                     .font(.system(size: 9))
@@ -41,6 +46,12 @@ struct RootView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
             .animation(.spring(duration: 0.3), value: selectedPlaneID)
+            .animation(.spring(duration: 0.3), value: browser.expanded)
+
+            if browser.isOpen {
+                LiveATCPanel()
+                    .padding(.bottom, 4)
+            }
         }
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }

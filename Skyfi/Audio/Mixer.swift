@@ -40,7 +40,23 @@ final class Mixer {
     /// 0 = all music, 0.5 = both at full, 1 = all ATC.
     var mix: Float = 0.5 { didSet { applyVolumes() } }
 
-    var isPlaying: Bool { musicStatus.isActive || atcStatus.isActive }
+    /// Tower audio plays in LiveATC's own player page (LiveATC refuses app players with HTTP 403).
+    /// Off = Skyfi's own player: volume, mix and who's talking, once a feed allows it.
+    var towerInBrowser: Bool = UserDefaults.standard.object(forKey: "towerInBrowser") as? Bool ?? true {
+        didSet {
+            guard towerInBrowser != oldValue else { return }
+            UserDefaults.standard.set(towerInBrowser, forKey: "towerInBrowser")
+            dlog("atc", "tower in LiveATC player: \(towerInBrowser)")
+            if let icao = airport, let airport = AirportIndex.shared.airport(icao: icao) {
+                disconnect()
+                connect(airport)
+            }
+        }
+    }
+
+    var isPlaying: Bool {
+        musicStatus.isActive || atcStatus.isActive || LiveATCBrowser.shared.media == .playing
+    }
     var hasSomething: Bool { music != nil || feed != nil }
 
     @ObservationIgnored private let musicPlayer = AVPlayer()
@@ -196,6 +212,10 @@ final class Mixer {
     func connect(_ airport: Airport) {
         let candidates = Catalog.feeds(at: airport.icao)
         guard !candidates.isEmpty else { return }
+        if towerInBrowser {
+            connectInBrowser(airport, candidates: candidates)
+            return
+        }
         if self.airport == airport.icao, !isFailed(atcStatus) { return }
         dlog("atc", "connect \(airport.icao): \(candidates.map(\.mount).joined(separator: ", "))")
         cancelRetry(isMusic: false)
@@ -207,8 +227,59 @@ final class Mixer {
         startATC(candidates[0])
     }
 
+    /// Browser mode: the tower plays in LiveATC's player page; Skyfi's own tower player stays off.
+    private func connectInBrowser(_ airport: Airport, candidates: [ATCFeed]) {
+        let browser = LiveATCBrowser.shared
+        if self.airport == airport.icao, browser.isOpen {
+            browser.expand()
+            return
+        }
+        dlog("atc", "connect \(airport.icao) in the LiveATC player: \(candidates[0].mount)")
+        cancelRetry(isMusic: false)
+        watchdogs["atc"]?.cancel()
+        chain = nil
+        userPaused = false
+        atcProblem = nil
+        setATCItem(nil)
+        atcStatus = .idle
+        self.airport = airport.icao
+        feed = candidates[0]
+        browser.open(candidates[0])
+        updateNowPlaying()
+    }
+
+    /// Stops the tower but stays connected: the airport's planes stay on the map.
+    func stopTower() {
+        dlog("atc", "stop tower")
+        LiveATCBrowser.shared.close()
+        if towerInBrowser {
+            feed = nil
+        } else {
+            cancelRetry(isMusic: false)
+            watchdogs["atc"]?.cancel()
+            chain = nil
+            feed = nil
+            setATCItem(nil)
+            atcStatus = .idle
+        }
+        updateNowPlaying()
+    }
+
+    /// The LiveATC page moved to another feed (you picked one on it).
+    func browserFeedChanged(_ feed: ATCFeed) {
+        guard towerInBrowser, airport != nil else { return }
+        self.feed = feed
+        updateNowPlaying()
+    }
+
+    /// The LiveATC page started or stopped playing: keep the lock screen and play button right.
+    func browserMediaChanged() {
+        updateNowPlaying()
+    }
+
     func disconnect() {
         dlog("atc", "disconnect")
+        LiveATCBrowser.shared.close()
         cancelRetry(isMusic: false)
         watchdogs["atc"]?.cancel()
         chain = nil
@@ -282,9 +353,10 @@ final class Mixer {
         userPaused = true
         musicPlayer.pause()
         atcPlayer.pause()
+        LiveATCBrowser.shared.setSuspended(true)
         onPause?()
         if music != nil { musicStatus = .paused }
-        if feed != nil { atcStatus = .paused }
+        if feed != nil, !towerInBrowser { atcStatus = .paused }
         updateNowPlaying()
     }
 
@@ -300,13 +372,15 @@ final class Mixer {
                 musicPlayer.play()
             }
         }
-        if let feed {
+        if towerInBrowser {
+            LiveATCBrowser.shared.setSuspended(false)
+        } else if let feed {
             setATCItem(AVPlayerItem(url: feed.url))
             atcPlayer.play()
             atcStatus = .loading
         }
         if music != nil { watchdog(isMusic: true) }
-        if feed != nil { watchdog(isMusic: false) }
+        if feed != nil, !towerInBrowser { watchdog(isMusic: false) }
         updateNowPlaying()
     }
 
@@ -436,10 +510,11 @@ final class Mixer {
 
     private func handleInterruption(type raw: UInt?, options: UInt?) {
         guard let raw, let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        dlog("audio", "interruption \(type == .began ? "began" : "ended")\(options.map { " options \($0)" } ?? "")")
         switch type {
         case .began:
             if music != nil { musicStatus = .paused }
-            if feed != nil { atcStatus = .paused }
+            if feed != nil, !towerInBrowser { atcStatus = .paused }
             updateNowPlaying()
         case .ended:
             if let options, AVAudioSession.InterruptionOptions(rawValue: options).contains(.shouldResume) {
@@ -503,7 +578,7 @@ final class Mixer {
                 } else {
                     self.musicPlayer.play()
                 }
-            } else if isATC, let feed = self.chain?.current ?? self.feed, self.atcStatus != .paused {
+            } else if isATC, !self.towerInBrowser, let feed = self.chain?.current ?? self.feed, self.atcStatus != .paused {
                 self.startATC(feed)
             }
         }

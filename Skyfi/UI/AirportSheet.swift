@@ -37,10 +37,25 @@ struct AirportSheet: View {
                             .font(.system(size: 13)).foregroundStyle(Theme.muted)
                     } else {
                         connectButton
+                        if isConnected, mixer.towerInBrowser {
+                            Button {
+                                mixer.connect(airport)
+                                onConnect()
+                            } label: {
+                                Label(LiveATCBrowser.shared.isOpen ? "Show LiveATC player" : "Play tower in LiveATC player",
+                                      systemImage: "play.circle")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Theme.cyan)
+                            }
+                        }
                     }
                 } footer: {
                     if !feeds.isEmpty {
-                        Text("Plays \(feeds.map(\.kind.label).joined(separator: ", then ")) if one is offline, and shows the planes within \(TrafficStore.rangeNM) nm they could be talking to.")
+                        if mixer.towerInBrowser {
+                            Text("Opens LiveATC's own player for the \(feeds[0].kind.label.lowercased()) and shows the planes within \(TrafficStore.rangeNM) nm it could be talking to.")
+                        } else {
+                            Text("Plays \(feeds.map(\.kind.label).joined(separator: ", then ")) if one is offline, and shows the planes within \(TrafficStore.rangeNM) nm they could be talking to.")
+                        }
                     }
                 }
 
@@ -126,7 +141,9 @@ struct AirportSheet: View {
         case .failed(let message): return message
         case .paused: return "Connected · \(mixer.feed?.name ?? "") · paused"
         case .loading: return mixer.feed?.name
-        default: return "Connected · \(mixer.feed?.name ?? "")"
+        default:
+            guard let feed = mixer.feed else { return "Connected · tower off" }
+            return mixer.towerInBrowser ? "Connected · \(feed.name) in LiveATC's player" : "Connected · \(feed.name)"
         }
     }
 

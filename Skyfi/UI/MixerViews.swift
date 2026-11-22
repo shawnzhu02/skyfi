@@ -21,7 +21,7 @@ struct MixerBar: View {
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
-                        Text(mixer.feed.map { "+ \($0.name)" } ?? "Tap an airport to connect")
+                        Text(mixer.feed.map { "+ \($0.name)" } ?? mixer.airport.map { "\($0) · tower off" } ?? "Tap an airport to connect")
                             .font(.system(size: 11))
                             .foregroundStyle(mixer.feed == nil ? Theme.muted : Theme.cyan)
                             .lineLimit(1)
@@ -52,6 +52,7 @@ struct MixerSheet: View {
     @Environment(Mixer.self) private var mixer
     @State private var link = ""
     @FocusState private var linkFocused: Bool
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         @Bindable var mixer = mixer
@@ -106,7 +107,7 @@ struct MixerSheet: View {
 
                 airportSection
 
-                if mixer.music != nil && mixer.feed != nil {
+                if mixer.music != nil && mixer.feed != nil && !mixer.towerInBrowser {
                     Section("Mix") {
                         VStack(spacing: 6) {
                             Slider(value: $mixer.mix, in: 0...1)
@@ -131,10 +132,34 @@ struct MixerSheet: View {
         @Bindable var mixer = mixer
         Section {
             if let feed = mixer.feed {
-                nowPlaying(title: feed.name, subtitle: "LiveATC · \(feed.airport)", status: mixer.atcStatus,
-                           tint: Theme.cyan, onStop: mixer.disconnect)
-                slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
+                if mixer.towerInBrowser {
+                    nowPlaying(title: feed.name, subtitle: "LiveATC player · \(feed.airport)",
+                               status: Self.status(of: LiveATCBrowser.shared.media),
+                               tint: Theme.cyan, onStop: mixer.stopTower)
+                    Button {
+                        if let airport = AirportIndex.shared.airport(icao: mixer.airport ?? feed.airport) {
+                            mixer.connect(airport)
+                        }
+                        dismiss()
+                    } label: {
+                        Label("Show LiveATC player", systemImage: "rectangle.on.rectangle")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.cyan)
+                    }
+                } else {
+                    nowPlaying(title: feed.name, subtitle: "LiveATC · \(feed.airport)", status: mixer.atcStatus,
+                               tint: Theme.cyan, onStop: mixer.disconnect)
+                    slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
+                }
             }
+            Toggle(isOn: $mixer.towerInBrowser) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Play tower in LiveATC's player").font(.system(size: 14))
+                    Text("LiveATC blocks app players, so Skyfi opens their own player page. Off tries Skyfi's player (tower volume, mix and who's talking).")
+                        .font(.system(size: 11)).foregroundStyle(Theme.muted)
+                }
+            }
+            .tint(Theme.cyan)
             ForEach(Catalog.airports(near: center).prefix(12)) { item in
                 airportRow(item)
             }
@@ -162,6 +187,15 @@ struct MixerSheet: View {
                 Spacer()
                 Text("\(Int(item.distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
             }
+        }
+    }
+
+    static func status(of media: LiveATCBrowser.Media) -> Mixer.Status {
+        switch media {
+        case .playing: return .playing
+        case .loading: return .loading
+        case .failed(let message): return .failed(message)
+        case .paused, .none: return .paused
         }
     }
 
