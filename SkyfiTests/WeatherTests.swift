@@ -229,6 +229,21 @@ final class ATISTests: XCTestCase {
         XCTAssertEqual(runways.departing, ["04R", "09"])
     }
 
+    func testWeatherNumbersInArrivalBroadcastAreNotRunways() throws {
+        // Logan has runway 22 and 9: "TEMP 22/09" and "VIS 9" must not count.
+        let broadcasts = [ATIS(airport: "KBOS", kind: .arrival, code: "K",
+                               text: "BOS ARR INFO K. TEMP 22/09. VIS 9. ILS RWY 22L APCH. RWY 27 U/S.", updated: nil)]
+        XCTAssertEqual(ATIS.runways(in: broadcasts, airport: boston), ATIS.Runways(landing: ["22L"], departing: []))
+    }
+
+    func testDates() {
+        XCTAssertNotNil(ATIS.parseDate("2026-11-22T08:32:25.2719594Z"))
+        XCTAssertNotNil(ATIS.parseDate("2026-11-22T08:32:25.271Z"))
+        XCTAssertNotNil(ATIS.parseDate("2026-11-22T08:32:25Z"))
+        XCTAssertNotNil(ATIS.parseDate("2026-11-22T08:32:25.2719594+00:00"))
+        XCTAssertNil(ATIS.parseDate("yesterday"))
+    }
+
     func testNoRunwaysFromWeatherNumbers() {
         let broadcasts = [ATIS(airport: "KBOS", kind: .combined, code: "A", text: "BOS ATIS INFO A. 27012KT 10SM FEW040 22/04 A3001.", updated: nil)]
         XCTAssertTrue(ATIS.runways(in: broadcasts, airport: boston).isEmpty)

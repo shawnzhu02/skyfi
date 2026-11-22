@@ -284,7 +284,7 @@ struct ATISSection: View {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        ForEach(broadcasts, id: \.kind) { atis in
+                        ForEach(Array(broadcasts.enumerated()), id: \.offset) { _, atis in
                             Text(label(atis))
                                 .font(Theme.mono(11, .bold))
                                 .padding(.horizontal, 6)
@@ -306,7 +306,7 @@ struct ATISSection: View {
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     }
                     if expanded {
-                        ForEach(broadcasts, id: \.kind) { atis in
+                        ForEach(Array(broadcasts.enumerated()), id: \.offset) { _, atis in
                             Text(atis.text).font(Theme.mono(11, .regular)).foregroundStyle(Theme.muted).textSelection(.enabled)
                         }
                     } else {

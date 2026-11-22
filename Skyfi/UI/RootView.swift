@@ -35,7 +35,8 @@ struct RootView: View {
 
             VStack(spacing: 10) {
                 topBar
-                if let plane = traffic.planes.values.first(where: { $0.emergency != nil }), let kind = plane.emergency {
+                Spacer()
+                if let plane = traffic.emergencyPlane, let kind = plane.emergency {
                     Button { pick(planeID: plane.id) } label: {
                         Label("\(plane.title) squawking \(plane.squawk ?? "") · \(kind)", systemImage: "exclamationmark.triangle.fill")
                             .font(.system(size: 12, weight: .bold))
@@ -45,9 +46,7 @@ struct RootView: View {
                             .background(Color.red.opacity(0.85), in: Capsule())
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 24)
                 }
-                Spacer()
                 if !seenTip, traffic.connected == nil, selectedPlane == nil {
                     FirstRunTip { seenTip = true }
                         .transition(.opacity)
@@ -81,7 +80,17 @@ struct RootView: View {
         .onChange(of: selectedPlaneID) { _, _ in following = false }
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
-        .sensoryFeedback(.warning, trigger: traffic.planes.values.first(where: { $0.emergency != nil })?.id) { _, new in new != nil }
+        .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
+        .onChange(of: selectedPlane == nil) { _, gone in
+            // The plane left the picture (out of range or no reports): drop the card and stop following.
+            if gone, selectedPlaneID != nil {
+                selectedPlaneID = nil
+                following = false
+            }
+        }
+        .onChange(of: locator.denied) { _, denied in
+            if denied { locationDenied = true }
+        }
         .onChange(of: locator.location) { _, location in
             guard let location else { return }
             focus = MapFocus(location.coordinate, spanDegrees: 4)
@@ -186,7 +195,9 @@ struct RootView: View {
                         Text(metar.windText).font(Theme.mono(10)).foregroundStyle(Theme.muted)
                         let atis = ATISStore.shared.atis(airport.icao)
                         let runways = ATIS.runways(in: atis, airport: airport)
-                        if let code = atis.first?.code, !code.isEmpty {
+                        // Only a current broadcast (an hour old at most) earns the top bar.
+                        if let code = atis.first?.code, !code.isEmpty,
+                           let updated = atis.compactMap(\.updated).max(), Date().timeIntervalSince(updated) < 3600 {
                             Text("ATIS \(code)\(runways.landing.first.map { " · \($0)" } ?? "")")
                                 .font(Theme.mono(10)).foregroundStyle(Theme.cyan)
                         }

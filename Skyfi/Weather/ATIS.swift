@@ -19,21 +19,30 @@ struct ATIS: Equatable {
 
     static func parse(_ data: Data) -> [ATIS] {
         guard let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return items.compactMap { item in
             guard let airport = item["airport"] as? String, let text = item["datis"] as? String else { return nil }
-            let updated = (item["updatedAt"] as? String).flatMap { raw -> Date? in
-                // "2026-11-22T08:32:25.2719594Z": trim to milliseconds for the formatter.
-                if let dot = raw.firstIndex(of: "."), let z = raw.lastIndex(of: "Z") {
-                    let fraction = raw[raw.index(after: dot)..<z].prefix(3)
-                    return iso.date(from: raw[..<dot] + "." + fraction + "Z")
-                }
-                return ISO8601DateFormatter().date(from: raw)
-            }
+            let updated = (item["updatedAt"] as? String).flatMap(parseDate)
             return ATIS(airport: airport, kind: Kind(rawValue: item["type"] as? String ?? "") ?? .combined,
                         code: item["code"] as? String ?? "", text: text, updated: updated)
         }
+    }
+
+    private static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let whole = ISO8601DateFormatter()
+
+    /// "2026-11-22T08:32:25.2719594Z", "...25.271Z", "...25Z" or with an offset.
+    static func parseDate(_ raw: String) -> Date? {
+        if let date = fractional.date(from: raw) ?? whole.date(from: raw) { return date }
+        // Seven fraction digits: trim to milliseconds and keep the zone.
+        guard let dot = raw.firstIndex(of: ".") else { return nil }
+        let afterDot = raw[raw.index(after: dot)...]
+        let digits = afterDot.prefix(while: \.isNumber)
+        let zone = afterDot.dropFirst(digits.count)
+        return fractional.date(from: String(raw[..<dot]) + "." + String(digits.prefix(3)) + String(zone))
     }
 
     struct Runways: Equatable {
@@ -49,20 +58,28 @@ struct ATIS: Equatable {
         var result = Runways()
         let known = Dictionary(airport.runways.map { (normalize($0.id), $0.id) }, uniquingKeysWith: { a, _ in a })
         let arrivalWords = ["LDG", "LNDG", "LANDING", "APCH", "APCHS", "APPROACH", "APPROACHES", "ILS", "RNAV", "VISUAL",
-                            "VIS", "ARR", "ARRIVALS", "ARRIVING", "LOC", "RNP", "GPS"]
+                            "ARR", "ARRIVALS", "ARRIVING", "LOC", "RNP", "GPS"]
+        let runwayWords = ["RWY", "RWYS", "RY", "RUNWAY", "RUNWAYS"]
         let departureWords = ["DEP", "DEPG", "DEPS", "DEPARTING", "DEPARTURE", "DEPARTURES", "TKOF", "TAKEOFF"]
-        let skipWords = ["CLSD", "CLOSED", "OTS", "U/S", "UNUSABLE", "NOTAM", "NOTAMS"]
+        let skipWords = ["CLSD", "CLOSED", "OTS", "UNUSABLE", "NOTAM", "NOTAMS"]
 
         for broadcast in broadcasts {
+            // A bare "RWY 4R" means landing, unless this is the departure broadcast.
+            let runwayDefault: Kind = broadcast.kind == .departure ? .departure : .arrival
             for sentence in broadcast.text.uppercased().components(separatedBy: ".") {
+                // "U/S" (unserviceable) would be split apart by the "/" below.
+                if sentence.contains("U/S") { continue }
                 let words = sentence.components(separatedBy: CharacterSet(charactersIn: " ,/;"))
                     .filter { !$0.isEmpty }
                 if words.contains(where: skipWords.contains) { continue }
-                // Walk the sentence: runway numbers belong to whichever keyword came last.
-                var mode: Kind? = broadcast.kind == .arrival ? .arrival : (broadcast.kind == .departure ? .departure : nil)
+                // Walk the sentence: a number counts only after a landing, departure or runway word,
+                // so temperatures and visibility never pass for runways.
+                var mode: Kind?
                 for word in words {
                     if departureWords.contains(word) { mode = .departure; continue }
                     if arrivalWords.contains(word) { mode = .arrival; continue }
+                    if runwayWords.contains(word) { mode = mode ?? runwayDefault; continue }
+                    if mode == nil, runwayWords.contains(where: { word.hasPrefix($0) }) { mode = runwayDefault }
                     guard let mode, let id = known[normalize(word)] else { continue }
                     if mode == .departure {
                         if !result.departing.contains(id) { result.departing.append(id) }
@@ -107,6 +124,8 @@ final class ATISStore {
             broadcasts[icao] = parsed
         } catch {
             fetched[icao] = nil
+            // Don't keep showing an old letter as if it were current.
+            broadcasts[icao] = nil
             dlog("weather", "\(icao) ATIS failed: \(error.localizedDescription)")
         }
     }

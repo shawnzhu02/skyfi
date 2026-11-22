@@ -27,6 +27,14 @@ final class TrafficStore {
     static let maxTrailPoints = 240
     @ObservationIgnored private var trailTimes: [String: Date] = [:]
 
+    /// The squawking plane to show, worst first (hijack, then emergency, then radio failure), steady across updates.
+    var emergencyPlane: Plane? {
+        let rank = ["7500": 0, "7700": 1, "7600": 2]
+        return planes.values
+            .filter { $0.emergency != nil }
+            .min { (rank[$0.squawk ?? ""] ?? 9, $0.id) < (rank[$1.squawk ?? ""] ?? 9, $1.id) }
+    }
+
     func trail(_ planeID: String?) -> [CLLocationCoordinate2D] {
         planeID.flatMap { trails[$0] } ?? []
     }
@@ -180,10 +188,11 @@ final class TrafficStore {
 
     private func addTrailPoint(_ plane: Plane) {
         // Lost for a while (out of range, no reports): start over rather than draw a line across the gap.
+        // Compared with the last report, not the last point, so a plane parked for a while keeps its trail.
         if let last = trailTimes[plane.id], plane.fixTime.timeIntervalSince(last) > 60 { trails[plane.id] = nil }
+        trailTimes[plane.id] = plane.fixTime
         if let last = trails[plane.id]?.last,
            Geo.distanceNM(last.latitude, last.longitude, plane.lat, plane.lon) < 0.05 { return }
-        trailTimes[plane.id] = plane.fixTime
         // Appends in place (no copy of the array per point).
         trails[plane.id, default: []].append(CLLocationCoordinate2D(latitude: plane.lat, longitude: plane.lon))
         if let count = trails[plane.id]?.count, count > Self.maxTrailPoints {

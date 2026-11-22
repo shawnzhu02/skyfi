@@ -62,6 +62,13 @@ struct GlobeView: UIViewRepresentable {
         let start = CLLocationCoordinate2D(latitude: 38.5, longitude: -97)
         map.setRegion(MKCoordinateRegion(center: start, span: MKCoordinateSpan(latitudeDelta: 30, longitudeDelta: 45)), animated: false)
         context.coordinator.map = map
+        // Our own recognizers (alongside MapKit's) tell a finger on the map from code moving it.
+        for gesture in [UIPanGestureRecognizer(), UIPinchGestureRecognizer(), UIRotationGestureRecognizer()] as [UIGestureRecognizer] {
+            gesture.addTarget(context.coordinator, action: #selector(Coordinator.userGesture(_:)))
+            gesture.delegate = context.coordinator
+            gesture.cancelsTouchesInView = false
+            map.addGestureRecognizer(gesture)
+        }
         context.coordinator.installArrow(on: map)
         context.coordinator.startTicker()
         return map
@@ -107,7 +114,14 @@ struct GlobeView: UIViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject, MKMapViewDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+        @objc func userGesture(_ gesture: UIGestureRecognizer) {
+            if gesture.state == .began, parent.followSelected { parent.onUserMove() }
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
         var parent: GlobeView
         weak var map: MKMapView?
         var look: MapLook?
@@ -211,9 +225,9 @@ struct GlobeView: UIViewRepresentable {
                 for annotation in self.planeAnnotations.values {
                     annotation.coordinate = annotation.plane.position(at: target)
                 }
-                // Glide the map with the plane, in the same animation.
-                if let followed { self.map?.setCenter(followed.coordinate, animated: false) }
             }
+            // Keep the followed plane in the middle (MapKit animates the move).
+            if let followed { map?.setCenter(followed.plane.position(at: target), animated: true) }
         }
 
         // MARK: Sync
@@ -351,8 +365,8 @@ struct GlobeView: UIViewRepresentable {
 
         private func style(for plane: Plane, tuned: Airport?) -> PlaneAnnotationView.Style {
             if plane.id == parent.selectedPlaneID { return .selected }
-            if plane.onGround { return .ground }
             if plane.emergency != nil { return .emergency }
+            if plane.onGround { return .ground }
             if let tuned, EventDetector.isApproaching(plane, to: tuned) { return .approach }
             return .airborne
         }
@@ -411,16 +425,9 @@ struct GlobeView: UIViewRepresentable {
             mapView.deselectAnnotation(annotation, animated: false)
         }
 
-        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
-            // A finger on the map (not code moving it) means you want to look around.
-            let touching = mapView.subviews.first?.gestureRecognizers?.contains {
-                $0.state == .began || $0.state == .changed
-            } ?? false
-            if touching, parent.followSelected { parent.onUserMove() }
-        }
-
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            parent.onCenterChange(mapView.region.center)
+            // Following moves the map every second; the nearby-airports list doesn't need each step.
+            if !parent.followSelected { parent.onCenterChange(mapView.region.center) }
             syncAirports(mapView, force: false)
             syncPlanes(mapView)
             // Labels and headings depend on zoom and rotation.
