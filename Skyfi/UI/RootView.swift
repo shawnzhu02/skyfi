@@ -209,6 +209,13 @@ struct PlaneCard: View {
                         .accessibilityLabel("Likely talking to \(airport.code) \(facility.label)")
                 }
             }
+            if let url = Self.flightAware(plane) {
+                Link(destination: url) {
+                    Label("Track on FlightAware", systemImage: "arrow.up.right.square")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.cyan)
+                }
+            }
         }
         .padding(14)
         .panel()
@@ -218,6 +225,13 @@ struct PlaneCard: View {
                 route = await RouteLookup.shared.route(callsign: callsign, lat: plane.lat, lon: plane.lon)
             }
         }
+    }
+
+    /// The flight's page on FlightAware (by callsign, else registration).
+    static func flightAware(_ plane: Plane) -> URL? {
+        let ident = (plane.callsign ?? plane.registration ?? "").filter { $0.isLetter || $0.isNumber }
+        guard !ident.isEmpty else { return nil }
+        return URL(string: "https://www.flightaware.com/live/flight/\(ident)")
     }
 
     private func stat(_ label: String, _ value: String) -> some View {
