@@ -2,12 +2,13 @@ import CoreLocation
 import Foundation
 import Observation
 
-/// The live traffic picture: polls the ADS-B feeds for the visible map area,
-/// merges planes by ICAO hex, and turns ground/air changes into airport events.
+/// The live traffic picture: polls the ADS-B feeds around the major airports in view
+/// (not the whole map, to keep requests small), merges planes by ICAO hex, and turns
+/// ground/air changes into airport events.
 @Observable
 @MainActor
 final class TrafficStore {
-    struct Tile: Equatable {
+    struct Tile: Hashable {
         let lat: Double
         let lon: Double
         let radiusNM: Int
@@ -18,13 +19,15 @@ final class TrafficStore {
     private(set) var lastUpdate: Date?
     private(set) var provider: ADSBClient.Provider = .adsbLol
     private(set) var failing = false
-    /// True when the visible area is bigger than the tiles Skyfi polls.
+    /// True when more major airports are in view than Skyfi polls at once.
     private(set) var limitedCoverage = false
+    /// False when no major airport is in view, so no planes are shown.
+    private(set) var watchingAirports = true
 
     @ObservationIgnored private var tiles: [Tile] = []
     @ObservationIgnored private var visibleTiles: [Tile] = []
     @ObservationIgnored private var pinnedTile: Tile?
-    @ObservationIgnored private var tileFetched: [Int: Date] = [:]
+    @ObservationIgnored private var tileFetched: [Tile: Date] = [:]
     @ObservationIgnored private var nextTile = 0
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var recentEventKeys: [String: Date] = [:]
@@ -32,10 +35,13 @@ final class TrafficStore {
     @ObservationIgnored private let index: AirportIndex
     @ObservationIgnored private var errorsInRow = 0
 
-    nonisolated static let tileSpacingNM = 350.0
-    nonisolated static let maxTiles = 9
+    /// Covers final approach, the initial climb and the 30 nm "approaching" window.
+    nonisolated static let airportRadiusNM = 30
+    /// Airports this close share one query circle (JFK, LGA and EWR are one).
+    nonisolated static let mergeNM = 25.0
+    nonisolated static let maxTiles = 8
     static let requestGap: Duration = .milliseconds(1200)
-    static let minTileAge: TimeInterval = 4
+    static let minTileAge: TimeInterval = 5
     static let staleAfter: TimeInterval = 60
 
     init(index: AirportIndex = .shared) {
@@ -56,8 +62,8 @@ final class TrafficStore {
 
     private func run() async {
         while !Task.isCancelled {
-            if let due = dueTile() {
-                await poll(due.tile, index: due.index)
+            if let tile = dueTile() {
+                await poll(tile)
                 try? await Task.sleep(for: errorsInRow > 2 ? .seconds(5) : Self.requestGap)
             } else {
                 try? await Task.sleep(for: .milliseconds(500))
@@ -65,23 +71,24 @@ final class TrafficStore {
         }
     }
 
-    private func dueTile() -> (index: Int, tile: Tile)? {
+    private func dueTile() -> Tile? {
         guard !tiles.isEmpty else { return nil }
         let now = Date()
         for step in 0..<tiles.count {
             let i = (nextTile + step) % tiles.count
-            if now.timeIntervalSince(tileFetched[i] ?? .distantPast) >= Self.minTileAge {
+            if now.timeIntervalSince(tileFetched[tiles[i]] ?? .distantPast) >= Self.minTileAge {
                 nextTile = (i + 1) % tiles.count
-                return (i, tiles[i])
+                return tiles[i]
             }
         }
         return nil
     }
 
-    private func poll(_ tile: Tile, index i: Int) async {
+    private func poll(_ tile: Tile) async {
         do {
             let aircraft = try await client.fetch(lat: tile.lat, lon: tile.lon, radiusNM: tile.radiusNM, provider: provider)
-            tileFetched[i] = Date()
+            guard tiles.contains(tile) else { return }
+            tileFetched[tile] = Date()
             errorsInRow = 0
             failing = false
             merge(aircraft, now: Date())
@@ -98,16 +105,17 @@ final class TrafficStore {
 
     /// Called by the globe whenever the visible region settles.
     func setVisibleRegion(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double) {
-        let (newTiles, limited) = Self.makeTiles(center: center, latDelta: latDelta, lonDelta: lonDelta)
+        let (newTiles, limited) = Self.makeTiles(center: center, latDelta: latDelta, lonDelta: lonDelta, index: index)
         limitedCoverage = limited
+        watchingAirports = !newTiles.isEmpty
         visibleTiles = newTiles
         rebuildTiles()
     }
 
-    /// Keeps polling around the tuned tower's airport, so "who's talking" has its planes
-    /// even when the map is looking somewhere else.
-    func setPinned(_ airport: Airport?) {
-        pinnedTile = airport.map { Tile(lat: $0.lat, lon: $0.lon, radiusNM: 60) }
+    /// Keeps polling around the tuned airport, so "who's talking" has its planes even when
+    /// the map is looking somewhere else. Tower needs the field and final; approach needs more.
+    func setPinned(_ airport: Airport?, radiusNM: Int = 60) {
+        pinnedTile = airport.map { Tile(lat: $0.lat, lon: $0.lon, radiusNM: radiusNM) }
         rebuildTiles()
     }
 
@@ -120,45 +128,45 @@ final class TrafficStore {
         }
         guard newTiles != tiles else { return }
         tiles = newTiles
-        tileFetched = [:]
+        // Keep fetch times for airports still in view, so panning doesn't refetch them.
+        tileFetched = tileFetched.filter { newTiles.contains($0.key) }
         nextTile = 0
+        // Planes near airports that left the view go now, not after the 60 s stale timeout.
+        planes = planes.filter { Self.covered(lat: $0.value.lat, lon: $0.value.lon, by: newTiles) }
     }
 
-    /// Splits the visible area into ≤250 nm query circles. Beyond 9 circles only the middle ones are polled.
-    nonisolated static func makeTiles(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double) -> ([Tile], Bool) {
-        let heightNM = min(latDelta, 170) * 60
-        let widthNM = min(lonDelta, 360) * 60 * max(cos(center.latitude * .pi / 180), 0.1)
-        let halfDiagonal = sqrt(heightNM * heightNM + widthNM * widthNM) / 2
-        if halfDiagonal <= Double(ADSBClient.maxRadiusNM) {
-            let radius = Int(max(halfDiagonal, 20).rounded(.up))
-            return ([Tile(lat: rounded(center.latitude), lon: rounded(center.longitude), radiusNM: radius)], false)
-        }
-        var rows = Int((heightNM / tileSpacingNM).rounded(.up))
-        var cols = Int((widthNM / tileSpacingNM).rounded(.up))
-        let limited = rows * cols > maxTiles
-        rows = min(rows, 3)
-        cols = min(cols, 3)
-        var result: [Tile] = []
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let north = (Double(r) - Double(rows - 1) / 2) * tileSpacingNM
-                let east = (Double(c) - Double(cols - 1) / 2) * tileSpacingNM
-                let lat = max(min(center.latitude + north / 60, 85), -85)
-                let lon = center.longitude + east / (60 * max(cos(lat * .pi / 180), 0.1))
-                let wrapped = (lon + 540).truncatingRemainder(dividingBy: 360) - 180
-                result.append(Tile(lat: rounded(lat), lon: rounded(wrapped), radiusNM: ADSBClient.maxRadiusNM))
+    nonisolated static func covered(lat: Double, lon: Double, by tiles: [Tile]) -> Bool {
+        tiles.contains { Geo.distanceNM(lat, lon, $0.lat, $0.lon) <= Double($0.radiusNM) + 5 }
+    }
+
+    /// One 30 nm query circle per major airport in view, nearest the middle first; airports within
+    /// 25 nm of one already chosen widen that circle instead. Beyond 8 circles the rest wait for a zoom.
+    nonisolated static func makeTiles(center: CLLocationCoordinate2D, latDelta: Double, lonDelta: Double,
+                                      index: AirportIndex) -> ([Tile], Bool) {
+        let halfLat = min(latDelta, 170) / 2
+        let lonSpan = min(lonDelta, 360)
+        let wrap = { (lon: Double) in (lon + 540).truncatingRemainder(dividingBy: 360) - 180 }
+        let minLon = lonSpan >= 359 ? -180 : wrap(center.longitude - lonSpan / 2)
+        let maxLon = lonSpan >= 359 ? 180 : wrap(center.longitude + lonSpan / 2)
+        let airports = index.airports(minLat: max(center.latitude - halfLat, -90), maxLat: min(center.latitude + halfLat, 90),
+                                      minLon: minLon, maxLon: maxLon, includeMedium: false, limit: 5000)
+            .map { ($0, Geo.distanceNM($0.lat, $0.lon, center.latitude, center.longitude)) }
+            .sorted { $0.1 < $1.1 }
+            .map(\.0)
+        var tiles: [Tile] = []
+        for airport in airports {
+            if let i = tiles.firstIndex(where: { Geo.distanceNM($0.lat, $0.lon, airport.lat, airport.lon) <= mergeNM }) {
+                let need = Int((Geo.distanceNM(tiles[i].lat, tiles[i].lon, airport.lat, airport.lon) + Double(airportRadiusNM)).rounded(.up))
+                if need > tiles[i].radiusNM {
+                    tiles[i] = Tile(lat: tiles[i].lat, lon: tiles[i].lon, radiusNM: min(need, 60))
+                }
+                continue
             }
+            if tiles.count == maxTiles { return (tiles, true) }
+            tiles.append(Tile(lat: airport.lat, lon: airport.lon, radiusNM: airportRadiusNM))
         }
-        // Poll the middle first.
-        result.sort {
-            Geo.distanceNM($0.lat, $0.lon, center.latitude, center.longitude)
-                < Geo.distanceNM($1.lat, $1.lon, center.latitude, center.longitude)
-        }
-        return (result, limited)
+        return (tiles, false)
     }
-
-    /// Rounding keeps tiles stable while the map moves a little.
-    nonisolated private static func rounded(_ value: Double) -> Double { (value * 4).rounded() / 4 }
 
     // MARK: Merge
 

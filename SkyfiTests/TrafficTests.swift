@@ -167,17 +167,39 @@ final class EventTests: XCTestCase {
 }
 
 final class TileTests: XCTestCase {
-    func testSmallRegionIsOneTile() {
-        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 42.36, longitude: -71), latDelta: 2, lonDelta: 2)
-        XCTAssertEqual(tiles.count, 1)
+    func testBostonIsOneAirportCircle() {
+        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 42.36, longitude: -71), latDelta: 1, lonDelta: 1,
+                                                      index: .shared)
+        let kbos = AirportIndex.shared.airport(icao: "KBOS")!
         XCTAssertFalse(limited)
-        XCTAssertLessThanOrEqual(tiles[0].radiusNM, 250)
+        XCTAssertEqual(tiles.count, 1)
+        XCTAssertLessThan(Geo.distanceNM(tiles[0].lat, tiles[0].lon, kbos.lat, kbos.lon), 1)
+        XCTAssertEqual(tiles[0].radiusNM, TrafficStore.airportRadiusNM)
     }
 
-    func testContinentIsCappedAtNine() {
-        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 39, longitude: -98), latDelta: 40, lonDelta: 70)
-        XCTAssertEqual(tiles.count, 9)
+    func testNewYorkAirportsShareACircle() {
+        let (tiles, _) = TrafficStore.makeTiles(center: .init(latitude: 40.7, longitude: -73.9), latDelta: 0.8, lonDelta: 0.8,
+                                                index: .shared)
+        XCTAssertLessThanOrEqual(tiles.count, 2)
+        for icao in ["KJFK", "KLGA", "KEWR"] {
+            let airport = AirportIndex.shared.airport(icao: icao)!
+            XCTAssertTrue(TrafficStore.covered(lat: airport.lat, lon: airport.lon, by: tiles), icao)
+        }
+    }
+
+    func testOpenOceanHasNoCircles() {
+        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 35, longitude: -45), latDelta: 3, lonDelta: 3,
+                                                      index: .shared)
+        XCTAssertTrue(tiles.isEmpty)
+        XCTAssertFalse(limited)
+    }
+
+    func testContinentIsCapped() {
+        let (tiles, limited) = TrafficStore.makeTiles(center: .init(latitude: 39, longitude: -98), latDelta: 40, lonDelta: 70,
+                                                      index: .shared)
+        XCTAssertEqual(tiles.count, TrafficStore.maxTiles)
         XCTAssertTrue(limited)
+        XCTAssertTrue(tiles.allSatisfy { $0.radiusNM <= 60 })
     }
 }
 

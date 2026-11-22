@@ -97,7 +97,7 @@ final class TalkStore {
         }
         feedAirport = airport
         feedKind = feed?.kind ?? .tower
-        traffic?.setPinned(airport)
+        traffic?.setPinned(airport, radiusNM: feedKind == .tower ? 20 : Int(Self.candidateRadiusNM))
         if item == nil, transmitting {
             transmitting = false
             Mixer.shared.setDucked(false)
