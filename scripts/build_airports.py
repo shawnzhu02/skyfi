@@ -76,6 +76,7 @@ def main():
                     "elev": int(num(row["elevation_ft"]) or 0),
                     "large": kind == "large_airport",
                     "runways": [],
+                    "strips": [],
                 }
 
     with open(fetch("runways.csv"), encoding="utf-8") as f:
@@ -98,7 +99,19 @@ def main():
             if row["he_ident"]:
                 ends.append({"id": row["he_ident"], "hdg": round(he_hdg, 1)})
             airport["runways"].extend(ends)
+            # Both thresholds known: the strip can be drawn on the map ("4R/22L", 45 m wide by default).
+            if None not in (le_lat, le_lon, he_lat, he_lon):
+                width_m = (num(row["width_ft"]) or 150) * 0.3048
+                airport["strips"].append({
+                    "a": [round(le_lat, 5), round(le_lon, 5)],
+                    "b": [round(he_lat, 5), round(he_lon, 5)],
+                    "ids": [e["id"] for e in ends],
+                    "w": round(width_m),
+                })
 
+    for airport in airports.values():
+        if not airport["strips"]:
+            del airport["strips"]
     out = sorted(airports.values(), key=lambda a: (not a["large"], a["icao"]))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:

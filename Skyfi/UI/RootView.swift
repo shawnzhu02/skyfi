@@ -19,6 +19,16 @@ struct RootView: View {
     @State private var following = false
     @State private var resumeDismissed = false
 
+    /// Runways in use at the connected airport: what the ATIS says, else what traffic and wind suggest.
+    private var activeRunways: Set<String> {
+        guard let airport = traffic.connected else { return [] }
+        let atis = ATIS.runways(in: ATISStore.shared.atis(airport.icao), airport: airport)
+        if !atis.isEmpty { return Set(atis.landing + atis.departing) }
+        let guess = RunwayGuess.guess(airport: airport, events: traffic.events(at: airport),
+                                      metar: WeatherStore.shared.metar(airport.icao))
+        return Set(guess?.runways ?? [])
+    }
+
     /// No position report for 15 s: the plane may have dropped out of receiver range.
     static func lostSignal(_ plane: Plane) -> Bool { Date().timeIntervalSince(plane.fixTime) > 15 }
     @AppStorage("altitudeColors") private var altitudeColors = false
@@ -37,7 +47,8 @@ struct RootView: View {
                       // Don't keep the camera on a frozen dot once reports stop.
                       followSelected: following && !(selectedPlane.map(Self.lostSignal) ?? false),
                       onUserMove: { following = false },
-                      showUser: locator.authorized, altitudeColors: altitudeColors)
+                      showUser: locator.authorized, altitudeColors: altitudeColors,
+                      activeRunways: activeRunways)
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {

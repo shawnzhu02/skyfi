@@ -1,9 +1,32 @@
 import CoreLocation
+import MapKit
 import Foundation
 
 struct RunwayEnd: Decodable, Hashable {
     let id: String
     let hdg: Double
+}
+
+/// A runway between its two thresholds, for drawing ("04R/22L", width in meters).
+struct RunwayStrip: Decodable, Hashable {
+    let a: [Double]
+    let b: [Double]
+    let ids: [String]
+    let w: Double
+
+    /// The four corners in map points, `w` meters wide.
+    func corners() -> [MKMapPoint]? {
+        guard a.count == 2, b.count == 2 else { return nil }
+        let pa = MKMapPoint(CLLocationCoordinate2D(latitude: a[0], longitude: a[1]))
+        let pb = MKMapPoint(CLLocationCoordinate2D(latitude: b[0], longitude: b[1]))
+        let dx = pb.x - pa.x, dy = pb.y - pa.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        guard length > 0 else { return nil }
+        let half = w / 2 * MKMapPointsPerMeterAtLatitude(a[0])
+        let px = -dy / length * half, py = dx / length * half
+        return [MKMapPoint(x: pa.x + px, y: pa.y + py), MKMapPoint(x: pb.x + px, y: pb.y + py),
+                MKMapPoint(x: pb.x - px, y: pb.y - py), MKMapPoint(x: pa.x - px, y: pa.y - py)]
+    }
 }
 
 struct Airport: Decodable, Identifiable, Hashable {
@@ -16,6 +39,8 @@ struct Airport: Decodable, Identifiable, Hashable {
     let elev: Int
     let large: Bool
     let runways: [RunwayEnd]
+    /// Missing when OurAirports has no threshold positions.
+    let strips: [RunwayStrip]?
 
     var id: String { icao }
     var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lon) }

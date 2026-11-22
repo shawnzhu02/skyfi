@@ -46,6 +46,8 @@ struct GlobeView: UIViewRepresentable {
     var showUser = false
     /// Color airborne planes by altitude instead of amber.
     var altitudeColors = false
+    /// Runways in use at the connected airport (from the ATIS or traffic), drawn highlighted.
+    var activeRunways: Set<String> = []
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -137,6 +139,8 @@ struct GlobeView: UIViewRepresentable {
         private var lastTuned: String?
         private var lastFavorites: [String] = []
         private var rangeRing: MKCircle?
+        private var runwayShapes: [RunwayPolygon] = []
+        private var runwayKey = ""
         private var trailLine: MKPolyline?
         private var lastTrail: (id: String?, count: Int, last: CLLocationCoordinate2D?) = (nil, 0, nil)
 
@@ -243,6 +247,7 @@ struct GlobeView: UIViewRepresentable {
                 syncRangeRing(map)
             }
             syncTrail(map)
+            syncRunways(map)
             let favoritesChanged = parent.favorites != lastFavorites
             lastFavorites = parent.favorites
             syncAirports(map, force: tunedChanged || favoritesChanged)
@@ -271,6 +276,23 @@ struct GlobeView: UIViewRepresentable {
             let ring = MKCircle(center: airport.coordinate, radius: Double(TrafficStore.rangeNM) * 1852)
             rangeRing = ring
             map.addOverlay(ring, level: .aboveRoads)
+        }
+
+        /// The connected airport's runways, redrawn when the airport or the runways in use change.
+        private func syncRunways(_ map: MKMapView) {
+            let key = (parent.tunedAirport ?? "") + "|" + parent.activeRunways.sorted().joined(separator: ",")
+            guard key != runwayKey else { return }
+            runwayKey = key
+            map.removeOverlays(runwayShapes)
+            runwayShapes = []
+            guard let icao = parent.tunedAirport, let airport = AirportIndex.shared.airport(icao: icao) else { return }
+            for strip in airport.strips ?? [] {
+                guard let corners = strip.corners() else { continue }
+                let shape = RunwayPolygon(points: corners, count: corners.count)
+                shape.active = strip.ids.contains(where: parent.activeRunways.contains)
+                runwayShapes.append(shape)
+            }
+            map.addOverlays(runwayShapes, level: .aboveRoads)
         }
 
         private func visibleRect(_ map: MKMapView) -> MKMapRect {
@@ -400,6 +422,13 @@ struct GlobeView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let runway = overlay as? RunwayPolygon {
+                let renderer = MKPolygonRenderer(polygon: runway)
+                renderer.fillColor = runway.active ? Theme.uiCyan.withAlphaComponent(0.85) : UIColor.white.withAlphaComponent(0.45)
+                renderer.strokeColor = UIColor.black.withAlphaComponent(0.4)
+                renderer.lineWidth = 0.5
+                return renderer
+            }
             if let line = overlay as? MKPolyline {
                 let renderer = MKPolylineRenderer(polyline: line)
                 renderer.strokeColor = Theme.uiAmber.withAlphaComponent(0.8)
@@ -435,4 +464,9 @@ struct GlobeView: UIViewRepresentable {
             syncPlanes(mapView)
         }
     }
+}
+
+/// A runway outline; `active` ones (in use now) draw in cyan.
+final class RunwayPolygon: MKPolygon {
+    var active = false
 }

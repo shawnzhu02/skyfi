@@ -1,3 +1,4 @@
+import MapKit
 import XCTest
 @testable import Skyfi
 
@@ -334,5 +335,22 @@ final class ProgressTests: XCTestCase {
 
     func testUnknownCodes() {
         XCTAssertNil(FlightProgress.from(route: "ZZZ → QQQ", plane: plane(lat: 40, lon: -80)))
+    }
+}
+
+final class RunwayStripTests: XCTestCase {
+    func testBostonHasDrawableStrips() throws {
+        let bos = try XCTUnwrap(AirportIndex.shared.airport(icao: "KBOS"))
+        let strip = try XCTUnwrap(bos.strips?.first { $0.ids.contains("04R") })
+        let corners = try XCTUnwrap(strip.corners())
+        XCTAssertEqual(corners.count, 4)
+        // Width across the threshold matches the strip's meters.
+        let across = corners[0].distance(to: corners[3])
+        XCTAssertEqual(across, strip.w, accuracy: 2)
+    }
+
+    func testDegenerateStrip() {
+        XCTAssertNil(RunwayStrip(a: [42, -71], b: [42, -71], ids: ["1"], w: 45).corners())
+        XCTAssertNil(RunwayStrip(a: [42], b: [42, -71], ids: ["1"], w: 45).corners())
     }
 }
