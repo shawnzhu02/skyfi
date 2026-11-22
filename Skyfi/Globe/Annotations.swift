@@ -44,6 +44,34 @@ final class PlaneAnnotationView: MKAnnotationView {
     private let bubble = PaddedLabel()
     private var style: Style?
 
+    /// The airborne glyph as a template, tinted per plane when coloring by altitude.
+    private static let altitudeImage = UIImage(systemName: "airplane",
+                                               withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .bold))?
+        .withRenderingMode(.alwaysTemplate)
+    private var byAltitude = false
+
+    /// tar1090-style altitude colors: orange low, through yellow and green, to blue and violet high.
+    static func altitudeColor(_ feet: Int?) -> UIColor {
+        guard let feet else { return Theme.uiAmber }
+        let stops: [(Int, UIColor)] = [
+            (0, UIColor(red: 1.0, green: 0.45, blue: 0.15, alpha: 1)),
+            (4000, UIColor(red: 1.0, green: 0.8, blue: 0.2, alpha: 1)),
+            (10000, UIColor(red: 0.45, green: 0.9, blue: 0.3, alpha: 1)),
+            (20000, UIColor(red: 0.25, green: 0.8, blue: 1.0, alpha: 1)),
+            (30000, UIColor(red: 0.45, green: 0.5, blue: 1.0, alpha: 1)),
+            (40000, UIColor(red: 0.8, green: 0.4, blue: 1.0, alpha: 1)),
+        ]
+        if feet <= stops[0].0 { return stops[0].1 }
+        for (low, high) in zip(stops, stops.dropFirst()) where feet <= high.0 {
+            let t = CGFloat(feet - low.0) / CGFloat(high.0 - low.0)
+            var (r1, g1, b1, a1, r2, g2, b2, a2) = (CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0))
+            low.1.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+            high.1.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+            return UIColor(red: r1 + (r2 - r1) * t, green: g1 + (g2 - g1) * t, blue: b1 + (b2 - b1) * t, alpha: 1)
+        }
+        return stops.last!.1
+    }
+
     private static let images: [Style: UIImage] = {
         var result: [Style: UIImage] = [:]
         let colors: [Style: UIColor] = [.airborne: Theme.uiAmber, .ground: Theme.uiGround,
@@ -99,9 +127,16 @@ final class PlaneAnnotationView: MKAnnotationView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(plane: Plane, style: Style, showLabel: Bool, mapHeading: Double) {
-        if self.style != style {
-            glyph.image = Self.images[style]
+    func configure(plane: Plane, style: Style, showLabel: Bool, mapHeading: Double, altitudeColors: Bool = false) {
+        // Only ordinary airborne planes take the altitude color; selected, approach, ground and emergency keep theirs.
+        let tintByAltitude = altitudeColors && style == .airborne
+        if tintByAltitude {
+            if !byAltitude || self.style != style { glyph.image = Self.altitudeImage }
+            glyph.tintColor = Self.altitudeColor(plane.altitude)
+        }
+        if self.style != style || byAltitude != tintByAltitude {
+            if !tintByAltitude { glyph.image = Self.images[style] }
+            byAltitude = tintByAltitude
             self.style = style
             glyph.layer.shadowColor = (style == .selected ? Theme.uiCyan : UIColor.black).cgColor
             glyph.layer.shadowRadius = style == .selected ? 8 : 2

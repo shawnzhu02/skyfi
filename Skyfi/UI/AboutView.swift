@@ -6,6 +6,7 @@ struct AboutView: View {
     @State private var places = Places.shared
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var confirmClear = false
+    @AppStorage("altitudeColors") private var altitudeColors = false
 
     var body: some View {
         @Bindable var mixer = mixer
@@ -17,6 +18,15 @@ struct AboutView: View {
                 Text("Tower audio")
             } footer: {
                 Text("LiveATC only allows listening through its own site, so Skyfi opens their player page. Off tries Skyfi's own player (tower volume, mix and who's talking), which LiveATC currently refuses.")
+            }
+
+            Section {
+                Toggle("Color planes by altitude", isOn: $altitudeColors)
+                    .tint(Theme.cyan)
+            } header: {
+                Text("Map")
+            } footer: {
+                Text("Orange near the ground, then yellow, green, blue and violet up high. Planes on approach, on the ground or squawking an emergency keep their own colors.")
             }
 
             Section("Credits") {

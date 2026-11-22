@@ -183,6 +183,19 @@ final class PlaneSizeTests: XCTestCase {
         XCTAssertEqual(PlaneAnnotationView.scale(forType: "C560"), 1, "a Citation jet, not a C-5")
         XCTAssertEqual(PlaneAnnotationView.scale(forType: nil), 1)
     }
+
+    func testAltitudeColorsBlendBetweenStops() {
+        func hue(_ feet: Int?) -> CGFloat {
+            var h: CGFloat = 0, sat: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            PlaneAnnotationView.altitudeColor(feet).getHue(&h, saturation: &sat, brightness: &b, alpha: &a)
+            return h
+        }
+        // Low is warm, high is cool: hue climbs from orange toward blue.
+        XCTAssertLessThan(hue(500), hue(10000))
+        XCTAssertLessThan(hue(10000), hue(25000))
+        XCTAssertEqual(PlaneAnnotationView.altitudeColor(nil), Theme.uiAmber)
+        XCTAssertEqual(PlaneAnnotationView.altitudeColor(60000), PlaneAnnotationView.altitudeColor(45000))
+    }
 }
 
 final class EmergencyTests: XCTestCase {

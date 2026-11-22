@@ -17,6 +17,7 @@ struct RootView: View {
     @State private var browser = LiveATCBrowser.shared
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
+    @AppStorage("altitudeColors") private var altitudeColors = false
     @State private var locator = Locator.shared
     @State private var locationDenied = false
 
@@ -30,7 +31,7 @@ struct RootView: View {
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 },
                       followSelected: following, onUserMove: { following = false },
-                      showUser: locator.authorized)
+                      showUser: locator.authorized, altitudeColors: altitudeColors)
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {

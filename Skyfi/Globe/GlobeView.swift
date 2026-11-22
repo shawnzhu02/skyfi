@@ -44,6 +44,8 @@ struct GlobeView: UIViewRepresentable {
     var onUserMove: () -> Void = {}
     /// Show the blue dot (only once you've allowed location).
     var showUser = false
+    /// Color airborne planes by altitude instead of amber.
+    var altitudeColors = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -374,7 +376,7 @@ struct GlobeView: UIViewRepresentable {
         private func configure(_ view: PlaneAnnotationView, plane: Plane, tuned: Airport?, map: MKMapView) {
             view.configure(plane: plane, style: style(for: plane, tuned: tuned),
                            showLabel: map.region.span.latitudeDelta < Self.labelSpan || plane.id == parent.selectedPlaneID,
-                           mapHeading: map.camera.heading)
+                           mapHeading: map.camera.heading, altitudeColors: parent.altitudeColors)
             view.setTalk(parent.talking[plane.id])
         }
 
