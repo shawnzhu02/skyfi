@@ -20,6 +20,14 @@ struct RootView: View {
     @State private var resumeDismissed = false
     /// The selected plane just landed or took off: a short banner.
     @State private var selectedEvent: AirportEvent?
+    /// "BOS information Lima now current": a new ATIS at the connected airport.
+    @State private var notice: String?
+
+    /// The connected airport and its current ATIS letter(s).
+    private var atisKey: String {
+        guard let icao = traffic.connected?.icao else { return "" }
+        return icao + "|" + ATISStore.shared.atis(icao).map(\.code).joined()
+    }
     /// Callsign of a plane picked from the worldwide search, shown while it loads.
     @State private var pendingTitle: String?
 
@@ -104,6 +112,17 @@ struct RootView: View {
                     FirstRunTip { seenTip = true }
                         .transition(.opacity)
                 }
+                if let notice {
+                    Label(notice, systemImage: "info.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.cyan)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .panel()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
+                }
                 if let event = selectedEvent {
                     Label(event.text, systemImage: event.kind == .departure ? "airplane.departure" : "airplane.arrival")
                         .font(.system(size: 13, weight: .semibold))
@@ -180,6 +199,24 @@ struct RootView: View {
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
         .sensoryFeedback(.impact, trigger: selectedEvent?.id) { _, new in new != nil }
+        .onChange(of: atisKey) { old, new in
+            // Same airport, new letter (not the first fetch after connecting).
+            let oldParts = old.split(separator: "|", omittingEmptySubsequences: false)
+            let newParts = new.split(separator: "|", omittingEmptySubsequences: false)
+            guard oldParts.count == 2, newParts.count == 2, oldParts[0] == newParts[0],
+                  !oldParts[1].isEmpty, !newParts[1].isEmpty, oldParts[1] != newParts[1],
+                  let airport = traffic.connected else { return }
+            let broadcasts = ATISStore.shared.atis(airport.icao)
+            let runways = ATIS.runways(in: broadcasts, airport: airport)
+            var text = "\(airport.code) information \(broadcasts.first?.code ?? "") now current"
+            if !runways.landing.isEmpty { text += " · landing \(runways.landing.joined(separator: ", "))" }
+            dlog("weather", text)
+            withAnimation { notice = text }
+            Task {
+                try? await Task.sleep(for: .seconds(10))
+                if notice == text { withAnimation { notice = nil } }
+            }
+        }
         .onChange(of: traffic.events.first?.id) { _, _ in
             // The plane you're watching touched down or lifted off.
             guard let event = traffic.events.first, event.planeID == selectedPlaneID else { return }
