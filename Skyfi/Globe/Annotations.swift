@@ -113,6 +113,10 @@ final class PlaneAnnotationView: MKAnnotationView {
         glyph.transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale, y: scale)
         label.isHidden = !showLabel
         label.text = plane.title
+        isAccessibilityElement = true
+        accessibilityLabel = [plane.title, plane.type, Format.altitude(plane), plane.emergency.map { "squawking \($0)" }]
+            .compactMap { $0 }.joined(separator: ", ")
+        accessibilityTraits = .button
     }
 
     /// Widebodies draw bigger and light aircraft smaller, so a 777 stands out from a Cessna.
@@ -222,6 +226,9 @@ final class AirportAnnotationView: MKAnnotationView {
     /// the connected one is filled. Others are small grey dots for orientation.
     func configure(airport: Airport, tuned: Bool, hasFeed: Bool, favorite: Bool = false) {
         label.text = favorite ? "★\(airport.code)" : airport.code
+        isAccessibilityElement = true
+        accessibilityLabel = "\(airport.name)\(hasFeed ? ", live tower" : "")\(tuned ? ", connected" : "")"
+        accessibilityTraits = .button
         let size: CGFloat = hasFeed ? 12 : 7
         dot.frame = CGRect(x: (bounds.width - size) / 2, y: 0, width: size, height: size)
         dot.layer.cornerRadius = size / 2

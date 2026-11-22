@@ -79,6 +79,9 @@ struct MixerSheet: View {
                             airportRow(airport, distanceNM: distance(to: airport), starred: places.isFavorite(airport.icao))
                         }
                     }
+                    .task(id: yourAirports.map(\.icao)) {
+                        await WeatherStore.shared.refresh(many: yourAirports.map(\.icao))
+                    }
                 }
 
                 Section("Music") {
@@ -254,6 +257,11 @@ struct MixerSheet: View {
                     Text(airport.name).font(.system(size: 11)).foregroundStyle(Theme.muted).lineLimit(1)
                 }
                 Spacer()
+                if let metar = WeatherStore.shared.metar(airport.icao) {
+                    Text(metar.category.rawValue)
+                        .font(Theme.mono(9, .bold))
+                        .foregroundStyle(WeatherSection.color(metar.category))
+                }
                 Text("\(Int(distanceNM)) nm").font(Theme.mono(11)).foregroundStyle(Theme.muted)
             }
         }

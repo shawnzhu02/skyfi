@@ -157,6 +157,24 @@ final class WeatherStore {
 
     func metar(_ icao: String) -> METAR? { reports[icao] }
 
+    /// One request for several airports (the API takes a comma list), for lists of airports.
+    func refresh(many icaos: [String]) async {
+        let due = icaos.filter { fetched[$0].map { Date().timeIntervalSince($0) >= 600 } ?? true }
+        guard !due.isEmpty else { return }
+        for icao in due { fetched[icao] = Date() }
+        let ids = due.prefix(30).joined(separator: ",")
+        guard let url = URL(string: "https://aviationweather.gov/api/data/metar?ids=\(ids)&format=json") else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            for report in METAR.parse(data) where due.contains(report.station) {
+                reports[report.station] = report
+            }
+        } catch {
+            for icao in due { fetched[icao] = nil }
+            dlog("weather", "batch failed: \(error.localizedDescription)")
+        }
+    }
+
     func refresh(_ icao: String) async {
         if let last = fetched[icao], Date().timeIntervalSince(last) < 600 { return }
         fetched[icao] = Date()
