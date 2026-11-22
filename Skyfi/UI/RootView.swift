@@ -63,6 +63,10 @@ struct RootView: View {
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
+    /// Off: the map keeps to the essentials (weather line, event toasts, resume chip and notices
+    /// stay hidden). Kept as a switch so they can come back if they're missed.
+    static let busyTopBar = false
+
     /// The map and everything over it.
     private var layout: some View {
         ZStack(alignment: .bottom) {
@@ -98,9 +102,6 @@ struct RootView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 MixerBar { showMixer = true }
-                Text("Traffic: \(traffic.provider.rawValue) · ATC: LiveATC.net")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Theme.muted)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 4)
@@ -129,7 +130,7 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        if seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
+        if Self.busyTopBar, seenTip, !resumeDismissed, traffic.connected == nil, mixer.music == nil, selectedPlane == nil,
            let icao = Places.shared.recents.first, let airport = AirportIndex.shared.airport(icao: icao) {
             ResumeChip(airport: airport, music: mixer.lastMusicTitle,
                        note: mixer.towerInBrowser ? "Then tap play on LiveATC's page" : "Where you left off") {
@@ -146,7 +147,7 @@ struct RootView: View {
             FirstRunTip { seenTip = true }
                 .transition(.opacity)
         }
-        if let notice {
+        if Self.busyTopBar, let notice {
             Label(notice, systemImage: "info.circle.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.cyan)
@@ -157,7 +158,7 @@ struct RootView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .transition(.opacity)
         }
-        if let event = selectedEvent {
+        if Self.busyTopBar, let event = selectedEvent {
             Label(event.text, systemImage: event.kind == .departure ? "airplane.departure" : "airplane.arrival")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(event.kind == .departure ? Theme.amber : Theme.cyan)
@@ -215,7 +216,6 @@ struct RootView: View {
         }
         // A tap of feedback when you connect, and a warning buzz when an emergency squawk appears.
         .sensoryFeedback(.success, trigger: mixer.airport) { _, new in new != nil }
-        .sensoryFeedback(.impact, trigger: selectedEvent?.id) { _, new in new != nil }
         .onChange(of: atisKey) { old, new in
             // Same airport, new letter (not the first fetch after connecting).
             let oldParts = old.split(separator: "|", omittingEmptySubsequences: false)
@@ -380,7 +380,7 @@ struct RootView: View {
                             .font(Theme.mono(11)).foregroundStyle(Theme.muted)
                     }
                 }
-                if let airport = traffic.connected, let metar = WeatherStore.shared.metar(airport.icao) {
+                if Self.busyTopBar, let airport = traffic.connected, let metar = WeatherStore.shared.metar(airport.icao) {
                     HStack(spacing: 6) {
                         Text(metar.category.rawValue).font(Theme.mono(10, .bold))
                             .foregroundStyle(WeatherSection.color(metar.category))
@@ -434,7 +434,7 @@ struct RootView: View {
         }
         .foregroundStyle(Theme.text)
         .overlay(alignment: .bottomLeading) {
-            if let event = traffic.events.first, Date().timeIntervalSince(event.time) < 90 {
+            if Self.busyTopBar, let event = traffic.events.first, Date().timeIntervalSince(event.time) < 90 {
                 Text(event.text)
                     .font(Theme.mono(11))
                     .padding(.horizontal, 10)
@@ -472,7 +472,7 @@ struct PlaneCard: View {
             if let line = [plane.operatorName, plane.typeName].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty {
                 Text(line).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
-            if let whereText = Self.position(plane, near: traffic.connected) {
+            if RootView.busyTopBar, let whereText = Self.position(plane, near: traffic.connected) {
                 Text(whereText).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
             }
             if RootView.lostSignal(plane) {
@@ -480,13 +480,13 @@ struct PlaneCard: View {
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.amber)
             }
             if let route {
-                if !plane.onGround, let progress = FlightProgress.from(route: route, plane: plane) {
+                if RootView.busyTopBar, !plane.onGround, let progress = FlightProgress.from(route: route, plane: plane) {
                     ProgressRow(progress: progress, onAirport: onAirport)
                 } else {
                     Text(route).font(Theme.mono(13)).foregroundStyle(Theme.amber)
                 }
             }
-            if let airport = traffic.connected, EventDetector.isApproaching(plane, to: airport),
+            if RootView.busyTopBar, let airport = traffic.connected, EventDetector.isApproaching(plane, to: airport),
                let minutes = EventDetector.minutesToLanding(plane, at: airport) {
                 Text("Landing \(airport.code)\(EventDetector.landingRunway(plane, at: airport).map { " \($0)" } ?? "") in about \(minutes) min")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.cyan)
@@ -494,11 +494,9 @@ struct PlaneCard: View {
             HStack(spacing: 14) {
                 stat("ALT", Format.altitude(plane))
                 stat("SPD", Format.speed(plane.groundSpeed))
-                stat("V/S", Format.verticalRate(plane.verticalRate))
-                if let reg = plane.registration { stat("REG", reg) }
-                // Only an emergency code earns the room (the row is full on small phones).
+                // Only an emergency code earns the room.
                 if plane.emergency != nil, let squawk = plane.squawk { stat("SQK", squawk) }
-                if let airport = traffic.connected, TrafficStore.inRange(plane, of: airport),
+                if RootView.busyTopBar, let airport = traffic.connected, TrafficStore.inRange(plane, of: airport),
                    let facility = LikelyFacility.guess(plane, airport: airport) {
                     // "TWR 128.8" when the airport has just one tower frequency.
                     let mhz = FrequencyIndex.shared.single(airport.icao, kind: facility.rawValue)?.mhzText
@@ -513,9 +511,6 @@ struct PlaneCard: View {
                 if let url = Self.flightAware(plane) {
                     Link(destination: url) {
                         Label("FlightAware", systemImage: "arrow.up.right.square")
-                    }
-                    ShareLink(item: url, message: Text(Self.shareText(plane, near: traffic.connected))) {
-                        Label("Share", systemImage: "square.and.arrow.up")
                     }
                 }
             }
@@ -592,7 +587,8 @@ struct ActivityList: View {
     @State var searchedFor = ""
 
     var body: some View {
-        let notable = notableNow
+        // "Notable nearby" is off with the rest of the extras.
+        let notable = RootView.busyTopBar ? notableNow : []
         NavigationStack {
             Group {
                 if !query.isEmpty {

@@ -152,11 +152,6 @@ struct MixerSheet: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search airports (BOS, Logan, Boston)")
             .navigationTitle("Mixer")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    AudioRoutePicker()
-                        .frame(width: 30, height: 30)
-                        .accessibilityLabel("Play on another speaker")
-                }
                 ToolbarItem(placement: .topBarTrailing) { sleepMenu }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -188,19 +183,13 @@ struct MixerSheet: View {
                     slider("ATC volume", value: $mixer.atcVolume, tint: Theme.cyan)
                 }
             }
-            Toggle(isOn: $mixer.towerInBrowser) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Play tower in LiveATC's player").font(.system(size: 14))
-                    Text("LiveATC blocks app players, so Skyfi opens their own player page. Off tries Skyfi's player (tower volume, mix and who's talking).")
-                        .font(.system(size: 11)).foregroundStyle(Theme.muted)
-                }
-            }
-            .tint(Theme.cyan)
-            ForEach(Catalog.airports(near: center).prefix(12)) { item in
-                airportRow(item.airport, distanceNM: item.distanceNM)
+            // The LiveATC-player switch lives in About; nearby airports are on the map.
+            if mixer.feed == nil {
+                Text("Tap an airport on the map, or search above.")
+                    .font(.system(size: 13)).foregroundStyle(Theme.muted)
             }
         } header: {
-            Text("Airport")
+            Text("Tower")
         } footer: {
             HStack(spacing: 16) {
                 // Checks Skyfi's own player, which only matters with the LiveATC player off.

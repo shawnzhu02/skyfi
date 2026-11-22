@@ -34,6 +34,8 @@ final class LiveATCBrowser {
     /// The Cloudflare "checking your browser" page has been up for a while.
     private(set) var stuckOnCheck = false
     @ObservationIgnored private var checkTask: Task<Void, Never>?
+    /// The stuck check already got one fresh start (cookies cleared, page reloaded) this time.
+    @ObservationIgnored private var retriedCheck = false
 
     @ObservationIgnored let webView: WKWebView
     @ObservationIgnored private let helper = BrowserHelper()
@@ -51,9 +53,12 @@ final class LiveATCBrowser {
         config.mediaTypesRequiringUserActionForPlayback = .all
         // Keeps LiveATC's Cloudflare check cookie, so the page doesn't re-check every launch.
         config.websiteDataStore = .default()
-        let script = WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        // Skyfi's media observer runs in its own script world, so LiveATC's page and Cloudflare's
+        // browser check never see it (no globals, no message handler in the page's world).
+        let script = WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentEnd,
+                                  forMainFrameOnly: false, in: .defaultClient)
         config.userContentController.addUserScript(script)
-        config.userContentController.add(helper, name: "skyfiMedia")
+        config.userContentController.add(helper, contentWorld: .defaultClient, name: "skyfiMedia")
 
         webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false
@@ -101,6 +106,7 @@ final class LiveATCBrowser {
         setSuspended(false)
         guard !same else { return }
         media = .none
+        retriedCheck = false
         load(Self.playerURL(for: feed))
         startPolling()
     }
@@ -220,13 +226,31 @@ final class LiveATCBrowser {
             stuckOnCheck = false
             return
         }
-        // Give the check 20 s to finish by itself before offering Safari.
+        // Give the check 15 s to finish by itself. Then start it once more from scratch (an old,
+        // half-finished check cookie can keep it spinning), and only after that offer Safari.
         checkTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(20))
+            try? await Task.sleep(for: .seconds(15))
             guard let self, !Task.isCancelled else { return }
-            self.stuckOnCheck = true
-            dlog("web", "still on the browser check after 20 s")
+            if !self.retriedCheck {
+                self.retriedCheck = true
+                dlog("web", "browser check stuck after 15 s: clearing LiveATC's cookies and reloading")
+                await self.clearLiveATCData()
+                self.webView.reload()
+            } else {
+                self.stuckOnCheck = true
+                dlog("web", "still on the browser check after a fresh start")
+            }
         }
+    }
+
+    /// Forgets LiveATC's cookies and storage (only LiveATC's and Cloudflare's), for a clean check.
+    private func clearLiveATCData() async {
+        let store = webView.configuration.websiteDataStore
+        let types = WKWebsiteDataStore.allWebsiteDataTypes()
+        let records = await store.dataRecords(ofTypes: types)
+        let mine = records.filter { $0.displayName.contains("liveatc") || $0.displayName.contains("cloudflare") }
+        guard !mine.isEmpty else { return }
+        await store.removeData(ofTypes: types, for: mine)
     }
 
     private func urlChanged(_ url: URL?) {
@@ -321,6 +345,8 @@ final class LiveATCBrowser {
     /// the tower is playing and why it stopped.
     private static let mediaScript = #"""
     (function () {
+      // Only LiveATC's own frames; Cloudflare's check frame is left alone.
+      if (!/(^|\.)liveatc\.net$/.test(location.hostname)) { return; }
       if (window.__skyfiMedia) { return; }
       window.__skyfiMedia = true;
       var names = { 1: 'aborted', 2: 'network error', 3: 'decode error', 4: 'stream refused or not supported' };
@@ -446,13 +472,7 @@ struct LiveATCPanel: View {
                 LiveATCWebView()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 8)
-                quickSwitch
-                Text("Audio from LiveATC.net's player. Balance it with the music volume.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.muted)
-                    .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
             }
             .frame(height: geo.size.height * (tall ? 0.78 : 0.5))
             .panel()
@@ -468,7 +488,6 @@ struct LiveATCPanel: View {
     private var header: some View {
         HStack(spacing: 4) {
             iconButton("chevron.down", label: "Minimize") { browser.minimize() }
-            iconButton("slider.horizontal.3", label: "Mixer") { onMixer() }
             VStack(alignment: .leading, spacing: 1) {
                 Text(browser.feed?.name ?? "LiveATC")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
@@ -476,15 +495,12 @@ struct LiveATCPanel: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.cyan).lineLimit(1)
             }
             Spacer(minLength: 4)
-            if browser.suspended {
-                iconButton("play.fill", label: "Resume") { mixer.resume() }
-            }
-            iconButton("chevron.backward", label: "Back") { browser.goBack() }
-                .disabled(!browser.canGoBack)
-                .opacity(browser.canGoBack ? 1 : 0.35)
-            iconButton("list.bullet", label: "All feeds at this airport") { browser.showAllFeeds() }
-            // The rest fit in a menu, so the header stays one row on small phones.
+            // Everything else lives in one menu, so the header stays simple.
             Menu {
+                if browser.canGoBack {
+                    Button { browser.goBack() } label: { Label("Back", systemImage: "chevron.backward") }
+                }
+                Button { browser.showAllFeeds() } label: { Label("Other feeds here", systemImage: "list.bullet") }
                 Button { tall.toggle() } label: {
                     Label(tall ? "Shorter panel" : "Taller panel",
                           systemImage: tall ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
@@ -540,7 +556,7 @@ struct LiveATCPanel: View {
     /// Why the page might not be working, with Safari as the way out.
     private var problem: String? {
         if case .failed(let message) = browser.media { return message }
-        if browser.stuckOnCheck { return "Still on LiveATC's browser check." }
+        if browser.stuckOnCheck { return "LiveATC's check won't finish here." }
         return nil
     }
 

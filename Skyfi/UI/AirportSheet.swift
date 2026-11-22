@@ -18,7 +18,6 @@ struct AirportSheet: View {
         let feeds = Catalog.feeds(at: airport.icao)
         let approaching = isConnected ? traffic.approaching(airport) : []
         let events = traffic.events(at: airport)
-        let ground = isConnected ? traffic.onGround(at: airport).count : 0
 
         NavigationStack {
             List {
@@ -27,16 +26,6 @@ struct AirportSheet: View {
                         Text(airport.name).font(Theme.rounded(18, .bold))
                         Text([airport.icao, airport.iata, airport.city].compactMap { $0 }.joined(separator: " · "))
                             .font(Theme.mono(12)).foregroundStyle(Theme.muted)
-                        AirportClock(airport: airport)
-                        if isConnected {
-                            Text("\(ground) on the ground · \(approaching.count) on approach")
-                                .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                            let hour = events.filter { Date().timeIntervalSince($0.time) < 3600 }
-                            if !hour.isEmpty {
-                                Text("Last hour: \(hour.filter { $0.kind == .arrival }.count) landings · \(hour.filter { $0.kind == .departure }.count) takeoffs")
-                                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                            }
-                        }
                     }
                     .listRowBackground(Color.clear)
                 }
@@ -46,15 +35,12 @@ struct AirportSheet: View {
                 // The ATIS says which runways are in use; only guess when it doesn't.
                 WeatherSection(airport: airport, metar: weather.metar(airport.icao),
                                runways: atisRunways.isEmpty ? RunwayGuess.guess(airport: airport, events: events, metar: weather.metar(airport.icao)) : nil)
-                ATISSection(broadcasts: broadcasts, runways: atisRunways)
                 if feeds.isEmpty {
                     NearbyTowersSection(airport: airport) { other in
                         mixer.connectViaLiveATC(other)
                         onConnect()
                     }
                 }
-                ForecastSection(taf: TAFStore.shared.taf(airport.icao))
-                FrequenciesSection(frequencies: FrequencyIndex.shared.frequencies(airport.icao))
 
                 Section {
                     if feeds.isEmpty, !mixer.towerInBrowser {
@@ -93,17 +79,10 @@ struct AirportSheet: View {
                             }
                         }
                     }
-                } footer: {
-                    if !feeds.isEmpty {
-                        if mixer.towerInBrowser {
-                            Text("Opens LiveATC's own player for the \(feeds[0].kind.label.lowercased()) and shows the planes within \(TrafficStore.rangeNM) nm it could be talking to.")
-                        } else {
-                            Text("Plays \(feeds.map(\.kind.label).joined(separator: ", then ")) if one is offline, and shows the planes within \(TrafficStore.rangeNM) nm they could be talking to.")
-                        }
-                    }
                 }
 
-                if mixer.towerInBrowser, feeds.count > 1 {
+                // Other feeds are one menu away in the LiveATC panel.
+                if RootView.busyTopBar, mixer.towerInBrowser, feeds.count > 1 {
                     Section("Feeds") {
                         ForEach(feeds) { feed in
                             Button {
@@ -140,31 +119,34 @@ struct AirportSheet: View {
                             Text("Nothing yet. They show up here live while Skyfi is open.")
                                 .font(.system(size: 13)).foregroundStyle(Theme.muted)
                         }
-                        ForEach(events.prefix(50)) { event in
+                        ForEach(events.prefix(10)) { event in
                             Button {
                                 if let plane = traffic.planes[event.planeID] { onPickPlane(plane) }
                             } label: { EventRow(event: event) }
                         }
                     }
-                } else if !feeds.isEmpty {
-                    Section {
-                        Text("Connect to see its planes, takeoffs and landings.")
-                            .font(.system(size: 13)).foregroundStyle(Theme.muted)
+                }
+
+                // ATIS, forecast, frequencies and local time: one tap away instead of on the card.
+                Section {
+                    NavigationLink("ATIS, forecast and frequencies") {
+                        List {
+                            Section { AirportClock(airport: airport) }
+                            ATISSection(broadcasts: broadcasts, runways: atisRunways)
+                            ForecastSection(taf: TAFStore.shared.taf(airport.icao))
+                            FrequenciesSection(frequencies: FrequencyIndex.shared.frequencies(airport.icao))
+                        }
+                        .scrollContentBackground(.hidden)
+                        .navigationTitle(airport.code)
+                        .navigationBarTitleDisplayMode(.inline)
                     }
+                    .font(.system(size: 14))
                 }
             }
             .scrollContentBackground(.hidden)
             .navigationTitle(airport.code)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    // Opens Skyfi on this airport for anyone with the app.
-                    ShareLink(item: URL(string: "skyfi://connect/\(airport.icao)")!,
-                              message: Text("Listen to \(airport.name) on Skyfi")) {
-                        Image(systemName: "square.and.arrow.up").foregroundStyle(Theme.cyan)
-                    }
-                    .accessibilityLabel("Share airport")
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         places.toggleFavorite(airport.icao)
