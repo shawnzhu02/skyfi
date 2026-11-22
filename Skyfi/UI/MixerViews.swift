@@ -1,3 +1,4 @@
+import AVKit
 import CoreLocation
 import SwiftUI
 import UIKit
@@ -151,6 +152,11 @@ struct MixerSheet: View {
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search airports (BOS, Logan, Boston)")
             .navigationTitle("Mixer")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    AudioRoutePicker()
+                        .frame(width: 30, height: 30)
+                        .accessibilityLabel("Play on another speaker")
+                }
                 ToolbarItem(placement: .topBarTrailing) { sleepMenu }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -330,4 +336,17 @@ struct MixerSheet: View {
                 .accessibilityLabel(label)
         }
     }
+}
+
+/// The system AirPlay / Bluetooth output picker: music and tower (LiveATC's page too) follow it.
+struct AudioRoutePicker: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let picker = AVRoutePickerView()
+        picker.tintColor = Theme.uiCyan
+        picker.activeTintColor = Theme.uiCyan
+        picker.prioritizesVideoDevices = false
+        return picker
+    }
+
+    func updateUIView(_ view: AVRoutePickerView, context: Context) {}
 }
