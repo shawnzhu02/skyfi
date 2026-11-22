@@ -42,6 +42,8 @@ struct GlobeView: UIViewRepresentable {
     var followSelected = false
     /// You dragged or pinched the map (ends follow mode).
     var onUserMove: () -> Void = {}
+    /// Show the blue dot (only once you've allowed location).
+    var showUser = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -68,6 +70,7 @@ struct GlobeView: UIViewRepresentable {
     func updateUIView(_ map: MKMapView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
+        if map.showsUserLocation != showUser { map.showsUserLocation = showUser }
         if coordinator.look != look {
             coordinator.look = look
             apply(look, to: map)

@@ -17,6 +17,8 @@ struct RootView: View {
     @State private var browser = LiveATCBrowser.shared
     @AppStorage("seenFirstRunTip") private var seenTip = false
     @State private var following = false
+    @State private var locator = Locator.shared
+    @State private var locationDenied = false
 
     private var selectedPlane: Plane? { selectedPlaneID.flatMap { traffic.planes[$0] } }
 
@@ -27,7 +29,8 @@ struct RootView: View {
                       trail: traffic.trail(selectedPlaneID), look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 },
-                      followSelected: following, onUserMove: { following = false })
+                      followSelected: following, onUserMove: { following = false },
+                      showUser: locator.authorized)
                 .ignoresSafeArea()
 
             VStack(spacing: 10) {
@@ -76,6 +79,23 @@ struct RootView: View {
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }
         .onChange(of: selectedPlaneID) { _, _ in following = false }
+        .onChange(of: locator.location) { _, location in
+            guard let location else { return }
+            focus = MapFocus(location.coordinate, spanDegrees: 4)
+            // Not connected yet: offer the nearest airport with a feed.
+            if traffic.connected == nil,
+               let nearest = Catalog.airports(near: location.coordinate).first, nearest.distanceNM < 200 {
+                selectedAirport = nearest.airport
+            }
+        }
+        .alert("Location is off for Skyfi", isPresented: $locationDenied) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Turn it on in Settings to center the map on you.")
+        }
         .task(id: traffic.connected?.icao) {
             // The connected airport's weather for the top bar (the store caches 10 minutes).
             guard let icao = traffic.connected?.icao else { return }
@@ -171,6 +191,17 @@ struct RootView: View {
             .panel()
 
             Spacer()
+
+            Button {
+                locator.request()
+                if locator.denied { locationDenied = true }
+            } label: {
+                Image(systemName: locator.authorized ? "location.fill" : "location")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 38, height: 38)
+            }
+            .panel()
+            .accessibilityLabel("Near me")
 
             Button { showActivity = true } label: {
                 Image(systemName: "list.bullet.rectangle")
