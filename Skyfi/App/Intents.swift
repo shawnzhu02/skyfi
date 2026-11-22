@@ -71,6 +71,37 @@ struct PauseSkyfiIntent: AppIntent {
     }
 }
 
+struct AirportWeatherIntent: AppIntent {
+    static var title: LocalizedStringResource = "Airport weather"
+    static var description = IntentDescription("Reads the airport's latest weather report (METAR) and ATIS letter.")
+
+    @Parameter(title: "Airport")
+    var airport: AirportEntity
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
+        let icao = airport.id
+        await WeatherStore.shared.refresh(icao)
+        await ATISStore.shared.refresh(icao)
+        let text = Self.summary(code: airport.code, name: airport.name,
+                                metar: WeatherStore.shared.metar(icao),
+                                atis: ATISStore.shared.atis(icao).first?.code)
+        return .result(value: text, dialog: IntentDialog(stringLiteral: text))
+    }
+
+    /// "Boston Logan: VFR. Wind 190° 5 kt. Visibility 10+ mi. No ceiling. 8°C / 46°F. Information Kilo."
+    static func summary(code: String, name: String, metar: METAR?, atis: String?) -> String {
+        guard let metar else { return "No current weather report for \(code)." }
+        var parts = ["\(name): \(metar.category.rawValue)", "Wind \(metar.windText)"]
+        if let visibility = metar.visibilityText { parts.append("Visibility \(visibility)") }
+        parts.append(metar.ceilingText)
+        if let weather = metar.weather { parts.append(weather) }
+        if let temperature = metar.temperatureText { parts.append(temperature) }
+        if let atis, !atis.isEmpty { parts.append("Information \(atis)") }
+        return parts.joined(separator: ". ") + "."
+    }
+}
+
 struct SkyfiShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: ConnectAirportIntent(),
@@ -78,6 +109,11 @@ struct SkyfiShortcuts: AppShortcutsProvider {
                               "Listen to \(\.$airport) in \(.applicationName)"],
                     shortTitle: "Connect to airport",
                     systemImageName: "antenna.radiowaves.left.and.right")
+        AppShortcut(intent: AirportWeatherIntent(),
+                    phrases: ["Weather at \(\.$airport) in \(.applicationName)",
+                              "\(.applicationName) weather at \(\.$airport)"],
+                    shortTitle: "Airport weather",
+                    systemImageName: "cloud.sun")
         AppShortcut(intent: PauseSkyfiIntent(),
                     phrases: ["Pause \(.applicationName)"],
                     shortTitle: "Pause",

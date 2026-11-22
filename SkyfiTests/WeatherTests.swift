@@ -446,3 +446,14 @@ final class NearbyTowersTests: XCTestCase {
         XCTAssertLessThanOrEqual(nearby.count, 3)
     }
 }
+
+final class WeatherIntentTests: XCTestCase {
+    func testSummary() throws {
+        let json = #"[{"icaoId":"KBOS","rawOb":"KBOS 220854Z 19005KT 10SM FEW250 08/03 A3012","wdir":190,"wspd":5,"visib":"10+","clouds":[{"cover":"FEW","base":25000}],"temp":8,"dewp":3,"altim":1019.6,"fltCat":"VFR"}]"#
+        let metar = try XCTUnwrap(METAR.parse(Data(json.utf8)).first)
+        let text = AirportWeatherIntent.summary(code: "BOS", name: "Logan", metar: metar, atis: "K")
+        XCTAssertTrue(text.hasPrefix("Logan: VFR. Wind 190° 5 kt."), text)
+        XCTAssertTrue(text.hasSuffix("Information K."), text)
+        XCTAssertEqual(AirportWeatherIntent.summary(code: "BOS", name: "Logan", metar: nil, atis: nil), "No current weather report for BOS.")
+    }
+}
