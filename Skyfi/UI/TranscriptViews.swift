@@ -99,6 +99,7 @@ struct TranscriptSheet: View {
     @Environment(Mixer.self) private var mixer
     var onPick: (String) -> Void
     @State private var showDebug = false
+    @State private var testResult: String?
 
     var body: some View {
         @Bindable var talk = talk
@@ -110,6 +111,16 @@ struct TranscriptSheet: View {
                     Toggle("Lower music when the tower talks", isOn: $talk.duck)
                     Toggle("Callsign hints (experimental)", isOn: $talk.useHints)
                     Toggle("Show match details", isOn: $showDebug)
+                    if showDebug {
+                        Button("Test highlight") {
+                            testResult = talk.testHighlight()
+                                ? "Sent: the nearest plane should glow now."
+                                : "No plane to call. Connect to an airport with traffic first."
+                        }
+                        if let testResult {
+                            Text(testResult).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        }
+                    }
                 } footer: {
                     Text("Transcripts run on your phone and only while Skyfi is open. They're for listening along, not for operational use.")
                 }

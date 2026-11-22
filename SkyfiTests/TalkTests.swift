@@ -205,3 +205,72 @@ final class FrequencyTests: XCTestCase {
         XCTAssertTrue(on(far, .approach))
     }
 }
+
+/// End to end without the speech model: transcript text in, glowing plane out.
+@MainActor
+final class HighlightTests: XCTestCase {
+    let kbos = AirportIndex.shared.airport(icao: "KBOS")!
+
+    private func aircraft(_ hex: String, _ flight: String, lat: Double, lon: Double, alt: String) -> ADSBAircraft {
+        try! JSONDecoder().decode(ADSBAircraft.self, from: Data("""
+        {"hex":"\(hex)","flight":"\(flight)","lat":\(lat),"lon":\(lon),"alt_baro":\(alt),"gs":140,"track":40}
+        """.utf8))
+    }
+
+    private func connectedStore() -> TrafficStore {
+        let traffic = TrafficStore()
+        traffic.connect(kbos)
+        traffic.merge([
+            aircraft("a1b2c3", "DAL234", lat: 42.30, lon: -71.08, alt: "1800"),
+            aircraft("d4e5f6", "N123AB", lat: 42.365, lon: -71.01, alt: "\"ground\""),
+            aircraft("abcdef", "DAL243", lat: 42.37, lon: -71.02, alt: "\"ground\""),
+        ], now: Date())
+        TalkStore.shared.connect(traffic: traffic)
+        // Start clean: the store is shared between tests.
+        TalkStore.shared.feedChanged(item: nil, feed: nil)
+        TalkStore.shared.feedChanged(item: nil, feed: Catalog.feed(at: "KBOS"))
+        return traffic
+    }
+
+    func testTowerCallLightsUpTheRightPlane() {
+        let traffic = connectedStore()
+        XCTAssertEqual(traffic.planes.count, 3)
+        let line = TalkStore.shared.ingest(text: "delta two three four runway four right cleared to land")
+        XCTAssertEqual(line.planeID, "a1b2c3")
+        XCTAssertEqual(line.speaker, .controller)
+        let talk = try! XCTUnwrap(TalkStore.shared.talking["a1b2c3"])
+        XCTAssertTrue(talk.isFresh)
+        XCTAssertNil(TalkStore.shared.talking["abcdef"], "Delta 243 must not glow")
+    }
+
+    func testPilotReadbackAndGarbleDoesNotGlow() {
+        _ = connectedStore()
+        let pilot = TalkStore.shared.ingest(text: "Boston ground, Delta 243, ready to taxi")
+        XCTAssertEqual(pilot.planeID, "abcdef")
+        XCTAssertEqual(pilot.speaker, .pilot)
+        let garbled = TalkStore.shared.ingest(text: "wind two seven zero at one five")
+        XCTAssertNil(garbled.planeID)
+    }
+
+    func testDebugButtonHighlightsNearestPlane() {
+        _ = connectedStore()
+        XCTAssertTrue(TalkStore.shared.testHighlight())
+        XCTAssertNotNil(TalkStore.shared.latestTalker)
+    }
+
+    func testAnnotationGlowAndExpiry() {
+        let traffic = connectedStore()
+        let plane = try! XCTUnwrap(traffic.planes["a1b2c3"])
+        let view = PlaneAnnotationView(annotation: nil, reuseIdentifier: nil)
+        view.configure(plane: plane, style: .approach, showLabel: true, mapHeading: 0)
+        XCTAssertEqual(view.zPriority, .defaultSelected)
+        view.setTalk(TalkStore.Talk(time: Date(), speaker: .controller, text: "Delta 234 cleared to land"))
+        XCTAssertTrue(view.isTalking)
+        XCTAssertEqual(view.zPriority, .max)
+        XCTAssertNotNil(view.bubbleText)
+        view.setTalk(TalkStore.Talk(time: Date().addingTimeInterval(-30), speaker: .controller, text: "old"))
+        XCTAssertFalse(view.isTalking)
+        XCTAssertNil(view.bubbleText)
+        XCTAssertEqual(view.zPriority, .defaultSelected, "Back to the approach style's order")
+    }
+}

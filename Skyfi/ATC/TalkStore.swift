@@ -97,7 +97,8 @@ final class TalkStore {
         self.traffic = traffic
     }
 
-    private func feedChanged(item: AVPlayerItem?, feed: ATCFeed?) {
+    /// Called by Mixer on every tower item change (connect, fallback to approach, reconnect, disconnect).
+    func feedChanged(item: AVPlayerItem?, feed: ATCFeed?) {
         stopTransmitting()
         tap.attach(to: item)
         let airport = feed.flatMap { AirportIndex.shared.airport(icao: $0.airport) }
@@ -107,7 +108,7 @@ final class TalkStore {
         }
         feedAirport = airport
         feedKind = feed?.kind ?? .tower
-        traffic?.setPinned(airport, radiusNM: feedKind == .tower ? 20 : Int(Self.candidateRadiusNM))
+        // TrafficStore already polls this airport: it follows Mixer.airport through RootView.
         // The 1.5 GB model only sits in memory while a tower is tuned.
         if feed == nil {
             model.unload()
@@ -154,19 +155,44 @@ final class TalkStore {
         let started = Date()
         guard let heard = await model.transcribe(transmission.samples, prompt: prompt) else { return }
         let seconds = Date().timeIntervalSince(started)
-        let tokens = Phraseology.tokens(heard.text)
-        let result = matcher.match(tokens: tokens, candidates: candidates)
+        // The feed may have changed while the model was busy.
+        guard feedAirport != nil else { return }
+        ingest(text: heard.text, start: transmission.start, duration: transmission.duration,
+               seconds: seconds, candidates: candidates)
+    }
+
+    /// Everything after speech-to-text: normalize, match the callsign against the planes on
+    /// frequency, add the transcript line and make the matched plane glow. Tests and the
+    /// "Test highlight" button call this directly.
+    @discardableResult
+    func ingest(text: String, start: Date = Date(), duration: Double = 0, seconds: Double = 0,
+                candidates: [Candidate]? = nil) -> Line {
+        let candidates = candidates ?? currentCandidates()
+        let result = matcher.match(tokens: Phraseology.tokens(text), candidates: candidates)
         let plane = result.accepted.flatMap { traffic?.planes[$0.candidateID] }
-        let line = Line(text: heard.text, planeID: result.accepted?.candidateID, label: plane?.title,
+        let line = Line(text: text, planeID: result.accepted?.candidateID, label: plane?.title,
                         speaker: result.accepted?.speaker ?? .unknown, score: result.best?.score ?? 0,
                         runnerUp: result.runnerUp?.score, candidateCount: candidates.count,
-                        time: transmission.start, duration: transmission.duration, seconds: seconds)
+                        time: start, duration: duration, seconds: seconds)
         lines.insert(line, at: 0)
         if lines.count > 100 { lines.removeLast(lines.count - 100) }
         if let accepted = result.accepted {
             talking = talking.filter { $0.value.isFresh }
-            talking[accepted.candidateID] = Talk(time: Date(), speaker: accepted.speaker, text: heard.text)
+            talking[accepted.candidateID] = Talk(time: Date(), speaker: accepted.speaker, text: text)
         }
+        return line
+    }
+
+    /// Debug: pretends the tower just called the nearest plane on frequency, so the glow,
+    /// bubble, edge arrow and transcript can be checked without the speech model.
+    /// Returns false when there's no plane to call.
+    @discardableResult
+    func testHighlight() -> Bool {
+        let candidates = currentCandidates()
+        guard let pick = candidates.first(where: { !matcher.forms(for: $0).isEmpty }) else { return false }
+        let callsign = matcher.hint(for: [pick])
+        let instruction = pick.onGround ? "taxi to runway two two right via alpha" : "cleared to land runway four right"
+        return ingest(text: "\(callsign), \(instruction)", candidates: candidates).planeID != nil
     }
 
     /// Planes that could be on the tuned frequency. A tower feed only talks to planes on the

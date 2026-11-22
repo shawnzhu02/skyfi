@@ -8,7 +8,7 @@ struct RootView: View {
 
     @State private var selectedPlaneID: String?
     @State private var selectedAirport: Airport?
-    @State private var focus: CLLocationCoordinate2D?
+    @State private var focus: MapFocus?
     @State private var center = CLLocationCoordinate2D(latitude: 42.36, longitude: -71.0)
     @State private var look: MapLook = .satellite
     @State private var showMixer = false
@@ -19,7 +19,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            GlobeView(traffic: traffic, planes: traffic.planes, tunedAirport: mixer.feed?.airport,
+            GlobeView(planes: traffic.planes, tunedAirport: mixer.airport,
                       talking: talk.talking, look: look,
                       selectedPlaneID: $selectedPlaneID, selectedAirport: $selectedAirport, focus: $focus,
                       onCenterChange: { center = $0 })
@@ -44,11 +44,18 @@ struct RootView: View {
         }
         .background(Theme.background)
         .onAppear { traffic.setActive(true) }
+        .onChange(of: mixer.airport) { _, icao in
+            // Connecting shows that airport's planes and zooms to its 60 nm ring; disconnecting clears them.
+            let airport = icao.flatMap { AirportIndex.shared.airport(icao: $0) }
+            traffic.connect(airport)
+            selectedPlaneID = nil
+            if let airport { focus = MapFocus(airport.coordinate, spanDegrees: 2.2) }
+        }
         .sheet(item: $selectedAirport) { airport in
-            AirportSheet(airport: airport) { plane in
+            AirportSheet(airport: airport, onConnect: { selectedAirport = nil }) { plane in
                 selectedAirport = nil
                 selectedPlaneID = plane.id
-                focus = plane.coordinate
+                focus = MapFocus(plane.coordinate)
             }
             .presentationDetents([.medium, .large])
             .presentationBackground(.ultraThinMaterial)
@@ -71,9 +78,9 @@ struct RootView: View {
                 showActivity = false
                 if let plane = traffic.planes[event.planeID] {
                     selectedPlaneID = plane.id
-                    focus = plane.coordinate
+                    focus = MapFocus(plane.coordinate)
                 } else if let airport = AirportIndex.shared.airport(icao: event.airport) {
-                    focus = airport.coordinate
+                    focus = MapFocus(airport.coordinate)
                 }
             }
             .presentationDetents([.medium, .large])
@@ -85,7 +92,7 @@ struct RootView: View {
         guard let plane = traffic.planes[planeID] else { return }
         selectedAirport = nil
         selectedPlaneID = plane.id
-        focus = plane.position(at: Date())
+        focus = MapFocus(plane.position(at: Date()))
     }
 
     private var topBar: some View {
@@ -93,14 +100,14 @@ struct RootView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("skyfi").font(Theme.rounded(17, .heavy)).foregroundStyle(Theme.amber)
-                    Circle().fill(traffic.failing ? Color.red : Color.green).frame(width: 6, height: 6)
-                    Text("\(traffic.planes.count) planes").font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    if let airport = traffic.connected {
+                        Circle().fill(traffic.failing ? Color.red : Color.green).frame(width: 6, height: 6)
+                        Text("\(airport.code)\(mixer.feed.map { " · \($0.kind.label)" } ?? "") · \(traffic.planes.count) planes")
+                            .font(Theme.mono(11)).foregroundStyle(Theme.muted)
+                    }
                 }
-                if !traffic.watchingAirports {
-                    Text("Planes show near major airports").font(.system(size: 10)).foregroundStyle(Theme.muted)
-                } else if traffic.limitedCoverage {
-                    Text("Showing the 8 airports nearest the middle · zoom in for more")
-                        .font(.system(size: 10)).foregroundStyle(Theme.muted)
+                if traffic.connected == nil {
+                    Text("Tap a cyan airport to connect").font(.system(size: 10)).foregroundStyle(Theme.muted)
                 }
             }
             .padding(.horizontal, 12)
