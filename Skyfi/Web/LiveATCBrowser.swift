@@ -353,11 +353,21 @@ struct LiveATCPanel: View {
     @State private var browser = LiveATCBrowser.shared
     @Environment(Mixer.self) private var mixer
     @Environment(\.openURL) private var openURL
+    /// Half height leaves the map in view; tall shows more of LiveATC's page.
+    @AppStorage("liveATCPanelTall") private var tall = false
 
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: 0) {
                 header
+                    .contentShape(Rectangle())
+                    // On the header only, so the page itself still scrolls.
+                    .gesture(DragGesture(minimumDistance: 20).onEnded { drag in
+                        // Up for tall, down for half, further down (or down from half) to minimize.
+                        if drag.translation.height < -40 { tall = true }
+                        else if drag.translation.height > 120 || (drag.translation.height > 40 && !tall) { browser.minimize() }
+                        else if drag.translation.height > 40 { tall = false }
+                    })
                 LiveATCWebView()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 8)
@@ -367,7 +377,7 @@ struct LiveATCPanel: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
             }
-            .frame(height: geo.size.height * 0.7)
+            .frame(height: geo.size.height * (tall ? 0.78 : 0.5))
             .panel()
             .frame(maxHeight: .infinity, alignment: .bottom)
             .offset(y: browser.expanded ? 0 : geo.size.height + 60)
@@ -375,11 +385,15 @@ struct LiveATCPanel: View {
         }
         .padding(.horizontal, 8)
         .animation(.spring(duration: 0.3), value: browser.expanded)
+        .animation(.spring(duration: 0.3), value: tall)
     }
 
     private var header: some View {
         HStack(spacing: 4) {
             iconButton("chevron.down", label: "Minimize") { browser.minimize() }
+            iconButton(tall ? "rectangle.compress.vertical" : "rectangle.expand.vertical", label: tall ? "Shorter" : "Taller") {
+                tall.toggle()
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(browser.feed?.name ?? "LiveATC")
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
