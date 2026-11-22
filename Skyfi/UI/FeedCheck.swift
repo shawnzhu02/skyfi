@@ -18,19 +18,26 @@ final class FeedChecker {
     private(set) var results: [String: Result] = [:]
     private(set) var running = false
     @ObservationIgnored private var job: Task<Void, Never>?
+    @ObservationIgnored private var generation = 0
 
     var liveCount: Int { results.values.filter { $0 == .live }.count }
     var deadCount: Int { results.values.filter { if case .dead = $0 { return true } else { return false } }.count }
 
     func start() {
         guard !running else { return }
+        job?.cancel()
+        generation += 1
+        let gen = generation
         running = true
         results = Dictionary(uniqueKeysWithValues: Catalog.feeds.map { ($0.mount, Result.waiting) })
         job = Task {
             for feed in Catalog.feeds {
-                if Task.isCancelled { break }
+                if Task.isCancelled || gen != generation { return }
                 results[feed.mount] = .checking
-                results[feed.mount] = await Self.check(feed)
+                let result = await Self.check(feed)
+                // A stopped run must not write over a newer one.
+                guard gen == generation else { return }
+                results[feed.mount] = result
             }
             running = false
         }
@@ -38,6 +45,7 @@ final class FeedChecker {
 
     func stop() {
         job?.cancel()
+        generation += 1
         running = false
     }
 

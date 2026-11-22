@@ -36,8 +36,8 @@ final class TrafficStore {
     nonisolated static let rangeNM = 60
     /// Above this the plane is with Center, not the airport's controllers.
     nonisolated static let maxAGL = 18_000
-    /// Planes on the ground further than this from the airport are at another field.
-    nonisolated static let groundNM = 3.0
+    /// Big fields (Denver's runways end 3.5 nm out) need room; `onField` then checks it's this airport.
+    nonisolated static let groundNM = 5.0
     static let requestGap: Duration = .milliseconds(1200)
     static let minTileAge: TimeInterval = 5
     static let staleAfter: TimeInterval = 60
@@ -117,10 +117,17 @@ final class TrafficStore {
     /// airport, or in the air within 60 nm and below 18,000 ft above it. Unknown altitude is kept.
     nonisolated static func inRange(_ plane: Plane, of airport: Airport) -> Bool {
         let distance = Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon)
-        if plane.onGround { return distance <= groundNM }
+        if plane.onGround { return onField(plane, airport) }
         guard distance <= Double(rangeNM) else { return false }
         guard let altitude = plane.altitude else { return true }
         return altitude - airport.elev <= maxAGL
+    }
+
+    /// On the ground at this airport rather than at a neighbouring field: within 5 nm and
+    /// this is the nearest airport (small fields included).
+    nonisolated static func onField(_ plane: Plane, _ airport: Airport, index: AirportIndex = .shared) -> Bool {
+        guard plane.onGround, Geo.distanceNM(plane.lat, plane.lon, airport.lat, airport.lon) <= groundNM else { return false }
+        return index.nearest(lat: plane.lat, lon: plane.lon, withinNM: groundNM)?.icao == airport.icao
     }
 
     // MARK: Merge
