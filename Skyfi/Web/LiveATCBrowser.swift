@@ -413,11 +413,13 @@ struct LiveATCPanel: View {
                 LiveATCWebView()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.horizontal, 8)
-                Text("Tower audio plays from LiveATC.net's own player. Balance it with the music volume. Who's talking needs Skyfi's own player, which LiveATC blocks.")
+                quickSwitch
+                Text("Audio from LiveATC.net's player. Balance it with the music volume.")
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.muted)
+                    .lineLimit(1)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.bottom, 6)
             }
             .frame(height: geo.size.height * (tall ? 0.78 : 0.5))
             .panel()
@@ -468,6 +470,38 @@ struct LiveATCPanel: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+
+    /// Your starred and recent airports, one tap to switch the tower (and the map) there.
+    @ViewBuilder private var quickSwitch: some View {
+        let places = Places.shared
+        var seen = Set<String>()
+        let icaos = (places.favorites + places.recents).filter { seen.insert($0).inserted }
+        let airports = icaos.compactMap { AirportIndex.shared.airport(icao: $0) }
+        if airports.count > 1 {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(airports) { airport in
+                        let here = mixer.airport == airport.icao
+                        Button {
+                            if !here { mixer.connectViaLiveATC(airport) }
+                        } label: {
+                            Text((places.isFavorite(airport.icao) ? "★" : "") + airport.code)
+                                .font(Theme.mono(12, .bold))
+                                .foregroundStyle(here ? Color.black : Theme.text)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(here ? Theme.cyan : Theme.muted.opacity(0.2), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(here ? "\(airport.name), playing" : "Switch to \(airport.name)")
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+        }
     }
 
     /// Why the page might not be working, with Safari as the way out.
