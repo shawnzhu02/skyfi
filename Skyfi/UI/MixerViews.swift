@@ -208,6 +208,7 @@ struct MixerSheet: View {
                     NavigationLink("Check feeds") { FeedCheckView() }
                 }
                 NavigationLink("Debug log") { DebugLogView() }
+                NavigationLink("What am I hearing?") { GlossaryView() }
                 NavigationLink("About") { AboutView() }
             }
             .font(.system(size: 12))
