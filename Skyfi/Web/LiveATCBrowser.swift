@@ -101,6 +101,7 @@ final class LiveATCBrowser {
         let same = isOpen && self.feed?.mount == feed.mount
         self.feed = feed
         isOpen = true
+        Mixer.shared.setMixesWithWebPlayer(true)
         expand()
         // A new connect is a fresh start: lift any old Skyfi pause so the page's play works.
         setSuspended(false)
@@ -115,6 +116,7 @@ final class LiveATCBrowser {
     func openAirport(_ icao: String) {
         feed = nil
         isOpen = true
+        Mixer.shared.setMixesWithWebPlayer(true)
         expand()
         setSuspended(false)
         media = .none
@@ -173,6 +175,7 @@ final class LiveATCBrowser {
         webView.load(URLRequest(url: URL(string: "about:blank")!))
         suspended = false
         isOpen = false
+        Mixer.shared.setMixesWithWebPlayer(false)
         expanded = false
         feed = nil
         pageURL = nil

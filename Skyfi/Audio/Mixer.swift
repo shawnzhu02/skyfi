@@ -546,6 +546,25 @@ final class Mixer {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
     }
 
+    @ObservationIgnored private var mixingWithWeb = false
+
+    /// LiveATC's page plays through WebKit's own audio session. Two non-mixing sessions cut each
+    /// other off (the music stops when the tower starts, and the other way round), so Skyfi's
+    /// session mixes while the LiveATC player is open and goes back to normal when it closes.
+    func setMixesWithWebPlayer(_ mix: Bool) {
+        guard mix != mixingWithWeb else { return }
+        mixingWithWeb = mix
+        dlog("audio", mix ? "session now mixes with LiveATC's player" : "session back to not mixing")
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: mix ? [.mixWithOthers] : [])
+        // Music the tower cut off before the switch comes back, unless you paused it yourself.
+        if mix, music != nil, musicStatus == .paused, !userPaused {
+            activateSession()
+            musicPlayer.play()
+            musicStatus = .playing
+            updateNowPlaying()
+        }
+    }
+
     private func activateSession() {
         try? AVAudioSession.sharedInstance().setActive(true)
     }
