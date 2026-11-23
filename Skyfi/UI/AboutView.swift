@@ -10,6 +10,8 @@ struct AboutView: View {
     @AppStorage("keepAwake") private var keepAwake = false
     @AppStorage("dataBlocks") private var dataBlocks = false
     @AppStorage("hideGround") private var hideGround = false
+    @AppStorage("autoZoomTalking") private var autoZoomTalking = true
+    @State private var talk = TalkStore.shared
 
     var body: some View {
         @Bindable var mixer = mixer
@@ -21,6 +23,17 @@ struct AboutView: View {
                 Text("Tower audio")
             } footer: {
                 Text("LiveATC only allows listening through its own site, so Skyfi opens their player page. Off tries Skyfi's own player (tower volume, mix and who's talking), which LiveATC currently refuses.")
+            }
+
+            Section {
+                Toggle("Live subtitles", isOn: $talk.subtitles)
+                    .tint(Theme.cyan)
+                Toggle("Zoom to the plane being talked to", isOn: $autoZoomTalking)
+                    .tint(Theme.cyan)
+            } header: {
+                Text("Subtitles")
+            } footer: {
+                Text("LiveATC's page doesn't share its sound with apps, so subtitles record what Skyfi is playing (iOS asks first) and transcribe it on the phone. Nothing is saved. Music is in that recording too: turn it down for better subtitles. Only while Skyfi is on screen.")
             }
 
             Section {

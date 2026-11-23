@@ -133,6 +133,7 @@ final class LiveATCBrowser {
         retriedCheck = false
         load(Self.playerURL(for: feed))
         startPolling()
+        TalkStore.shared.browserFeedChanged(feed)
     }
 
     /// Connects to an airport's best live feed: reads LiveATC's own feed list for it (from the
@@ -314,6 +315,7 @@ final class LiveATCBrowser {
         feed = nil
         pageURL = nil
         setMedia(.none)
+        TalkStore.shared.browserFeedChanged(nil)
     }
 
     private func load(_ url: URL) {

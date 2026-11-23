@@ -8,18 +8,30 @@ struct TranscriptStrip: View {
     var onOpen: () -> Void
 
     var body: some View {
-        // Who's talking listens to Skyfi's own tower player; LiveATC's page can't be heard by the app.
-        if mixer.feed != nil, talk.enabled, !mixer.towerInBrowser {
+        // Skyfi's own player is heard directly; LiveATC's page only with subtitles on (in-app recording).
+        if mixer.feed != nil, talk.enabled, mixer.towerInBrowser, !talk.subtitles {
+            Button { talk.subtitles = true } label: {
+                row(icon: "captions.bubble", text: "Turn on live subtitles (iOS asks to record Skyfi's sound)")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .panel()
+            }
+            .buttonStyle(.plain)
+        } else if mixer.feed != nil, talk.enabled, !mixer.towerInBrowser || talk.subtitles {
             VStack(alignment: .leading, spacing: 6) {
                 switch talk.model.state {
                 case .ready:
-                    if talk.lines.isEmpty {
+                    if let problem = talk.captureProblem, mixer.towerInBrowser {
+                        row(icon: "exclamationmark.triangle", text: problem)
+                    } else if talk.lines.isEmpty {
                         row(icon: talk.transmitting ? "waveform" : "ear", text: talk.transmitting ? "Listening…" : "Waiting for the tower to talk…")
                     }
-                    ForEach(talk.lines.prefix(3)) { line in
+                    // Subtitles: newest at the bottom, the callsign in orange.
+                    ForEach(Array(talk.lines.prefix(2).reversed())) { line in
                         Button {
                             if let id = line.planeID { onPick(id) } else { onOpen() }
-                        } label: { TranscriptRow(line: line, compact: true) }
+                        } label: { SubtitleLine(line: line) }
                         .buttonStyle(.plain)
                     }
                 case .downloading(let fraction):
@@ -48,6 +60,39 @@ struct TranscriptStrip: View {
             Image(systemName: icon).foregroundStyle(Theme.cyan).frame(width: 18)
             Text(text).font(.system(size: 12)).foregroundStyle(Theme.muted)
         }
+    }
+}
+
+/// One transmission as a subtitle: white words, the callsign Skyfi matched in orange.
+struct SubtitleLine: View {
+    let line: TalkStore.Line
+
+    var body: some View {
+        Text(Self.attributed(line))
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(Color.white)
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The words before, of and after the callsign; nil when no callsign was matched.
+    static func parts(_ line: TalkStore.Line) -> (before: String, callsign: String, after: String)? {
+        let tokens = line.tokens
+        guard let range = line.callsignRange, !range.isEmpty, range.lowerBound >= 0, range.upperBound <= tokens.count else { return nil }
+        return (tokens[..<range.lowerBound].joined(separator: " "),
+                tokens[range].joined(separator: " "),
+                tokens[range.upperBound...].joined(separator: " "))
+    }
+
+    static func attributed(_ line: TalkStore.Line) -> AttributedString {
+        guard let parts = parts(line) else { return AttributedString(line.text) }
+        var callsign = AttributedString(parts.callsign)
+        callsign.foregroundColor = Theme.highlight
+        callsign.font = .system(size: 15, weight: .bold)
+        var result = AttributedString(parts.before.isEmpty ? "" : parts.before + " ")
+        result += callsign
+        if !parts.after.isEmpty { result += AttributedString(" " + parts.after) }
+        return result
     }
 }
 

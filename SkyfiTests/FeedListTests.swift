@@ -54,3 +54,31 @@ final class FeedListTests: XCTestCase {
         XCTAssertEqual(feed.name, "Somewhere Approach")
     }
 }
+
+/// Subtitles: the matched callsign is split out so it can be drawn orange.
+final class SubtitleTests: XCTestCase {
+    private func line(_ tokens: [String], _ range: Range<Int>?) -> TalkStore.Line {
+        TalkStore.Line(text: tokens.joined(separator: " "), planeID: range == nil ? nil : "a1b2c3", label: "DAL5614",
+                       speaker: .controller, score: 0.9, runnerUp: nil, candidateCount: 3, time: Date(),
+                       duration: 2, seconds: 1, tokens: tokens, callsignRange: range)
+    }
+
+    func testSplitsCallsignOut() {
+        let parts = SubtitleLine.parts(line(["delta", "5614", "cleared", "to", "land"], 0..<2))
+        XCTAssertEqual(parts?.before, "")
+        XCTAssertEqual(parts?.callsign, "delta 5614")
+        XCTAssertEqual(parts?.after, "cleared to land")
+    }
+
+    func testCallsignInTheMiddle() {
+        let parts = SubtitleLine.parts(line(["boston", "tower", "jetblue", "12", "with", "you"], 2..<4))
+        XCTAssertEqual(parts?.before, "boston tower")
+        XCTAssertEqual(parts?.callsign, "jetblue 12")
+        XCTAssertEqual(parts?.after, "with you")
+    }
+
+    func testNoMatchOrBadRangeIsPlain() {
+        XCTAssertNil(SubtitleLine.parts(line(["say", "again"], nil)))
+        XCTAssertNil(SubtitleLine.parts(line(["say", "again"], 1..<5)))
+    }
+}

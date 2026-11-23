@@ -36,6 +36,8 @@ struct CallsignMatcher {
         let spoken: String
         let score: Double
         let speaker: Speaker
+        /// The transcript tokens the callsign covers (for highlighting it in subtitles).
+        var range: Range<Int>? = nil
     }
 
     struct Result: Equatable {
@@ -142,7 +144,7 @@ struct CallsignMatcher {
                 let adjusted = placed.score + contextBonus(candidate, instruction: instruction, runway: runway)
                 if adjusted > (top?.score ?? -1) {
                     top = Match(candidateID: candidate.id, spoken: form.spoken, score: min(adjusted, 1),
-                                speaker: Self.speaker(tokens: tokens, range: placed.range))
+                                speaker: Self.speaker(tokens: tokens, range: placed.range), range: placed.range)
                 }
             }
             if let top { best.append(top) }

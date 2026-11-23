@@ -24,6 +24,9 @@ final class TalkStore {
         let seconds: Double
         /// TWR, APP or DEP: who the controller was.
         var facility = "TWR"
+        /// The normalized words and which of them are the callsign, for subtitles.
+        var tokens: [String] = []
+        var callsignRange: Range<Int>? = nil
     }
 
     struct Talk: Equatable {
@@ -61,7 +64,23 @@ final class TalkStore {
     var useHints: Bool = UserDefaults.standard.bool(forKey: "talk.hints") {
         didSet { UserDefaults.standard.set(useHints, forKey: "talk.hints") }
     }
-    var foreground = true
+    var foreground = true {
+        didSet { if foreground != oldValue { updateCapture() } }
+    }
+
+    /// Live subtitles for LiveATC's player: Skyfi records its own sound (iOS asks once) and the
+    /// speech model transcribes it. Off until you turn it on.
+    var subtitles: Bool = UserDefaults.standard.bool(forKey: "talk.subtitles") {
+        didSet {
+            UserDefaults.standard.set(subtitles, forKey: "talk.subtitles")
+            captureProblem = nil
+            if subtitles, enabled, browserFeed != nil, ATCModel.isDownloaded { model.start() }
+            updateCapture()
+        }
+    }
+    /// Why the recording for subtitles isn't running, if it failed.
+    private(set) var captureProblem: String?
+    @ObservationIgnored private var browserFeed: ATCFeed?
 
     @ObservationIgnored private let tap = ATCTap()
     @ObservationIgnored private let squelch = Squelch()
@@ -85,6 +104,51 @@ final class TalkStore {
         }
         Mixer.shared.onPause = { [weak self] in
             self?.stopTransmitting()
+        }
+        let queue = tap.queue
+        PlaybackCapture.shared.onAudio = { samples in
+            // Squelch only ever runs on the tap's queue.
+            queue.async {
+                let events = squelch.process(samples)
+                guard !events.isEmpty else { return }
+                Task { @MainActor in TalkStore.shared.handle(events) }
+            }
+        }
+    }
+
+    /// The LiveATC player opened a feed (or closed, nil). Subtitles follow it.
+    func browserFeedChanged(_ feed: ATCFeed?) {
+        stopTransmitting()
+        let airport = feed.flatMap { AirportIndex.shared.airport(icao: $0.airport) }
+        if airport?.icao != feedAirport?.icao {
+            lines = []
+            talking = [:]
+        }
+        browserFeed = feed
+        if let feed {
+            feedAirport = airport
+            feedKind = feed.kind
+            if enabled, subtitles, ATCModel.isDownloaded { model.start() }
+        } else if Mixer.shared.towerInBrowser {
+            feedAirport = nil
+            model.unload()
+        }
+        updateCapture()
+    }
+
+    /// Records Skyfi's sound only while it's useful: subtitles on, a LiveATC feed open, on screen.
+    private func updateCapture() {
+        let want = subtitles && enabled && foreground && browserFeed != nil && Mixer.shared.towerInBrowser
+        let capture = PlaybackCapture.shared
+        if want, !capture.running {
+            capture.start { [weak self] problem in
+                guard let self else { return }
+                self.captureProblem = problem
+                // Refused: turn the switch back off so it doesn't keep asking.
+                if problem != nil { self.subtitles = false; self.captureProblem = problem }
+            }
+        } else if !want, capture.running {
+            capture.stop()
         }
     }
 
@@ -177,12 +241,14 @@ final class TalkStore {
     func ingest(text: String, start: Date = Date(), duration: Double = 0, seconds: Double = 0,
                 candidates: [Candidate]? = nil) -> Line {
         let candidates = candidates ?? currentCandidates()
-        let result = matcher.match(tokens: Phraseology.tokens(text), candidates: candidates)
+        let tokens = Phraseology.tokens(text)
+        let result = matcher.match(tokens: tokens, candidates: candidates)
         let plane = result.accepted.flatMap { traffic?.planes[$0.candidateID] }
         let line = Line(text: text, planeID: result.accepted?.candidateID, label: plane?.title,
                         speaker: result.accepted?.speaker ?? .unknown, score: result.best?.score ?? 0,
                         runnerUp: result.runnerUp?.score, candidateCount: candidates.count,
-                        time: start, duration: duration, seconds: seconds, facility: feedKind.tag)
+                        time: start, duration: duration, seconds: seconds, facility: feedKind.tag,
+                        tokens: tokens, callsignRange: result.accepted?.range)
         lines.insert(line, at: 0)
         if lines.count > 100 { lines.removeLast(lines.count - 100) }
         if let accepted = result.accepted {
