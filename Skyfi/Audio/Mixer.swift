@@ -299,8 +299,20 @@ final class Mixer {
         feed = chosen
         // WebKit plays through the app's audio session; make sure it's active for background audio.
         activateSession()
-        browser.open(chosen)
+        if pick != nil {
+            browser.open(chosen)
+        } else {
+            // Skyfi's own feed list is a guess: LiveATC's airport page says which feeds are real and up.
+            browser.openBest(icao: airport.icao, fallback: chosen)
+        }
         updateNowPlaying()
+    }
+
+    /// A feed picked from the LiveATC panel's menu.
+    func playBrowserFeed(_ feed: ATCFeed) {
+        guard towerInBrowser, let airport = AirportIndex.shared.airport(icao: feed.airport) else { return }
+        Places.shared.noteConnected(airport.icao)
+        connectInBrowser(airport, candidates: [feed], pick: feed)
     }
 
     /// Plays one of the airport's feeds in the LiveATC player (connecting to the airport if needed).
@@ -347,7 +359,8 @@ final class Mixer {
         atcStatus = .idle
         self.airport = airport.icao
         feed = nil
-        LiveATCBrowser.shared.openAirport(airport.icao)
+        // Plays the first live feed LiveATC lists here; with none up, the page stays for you to look.
+        LiveATCBrowser.shared.openBest(icao: airport.icao, fallback: nil)
         updateNowPlaying()
     }
 

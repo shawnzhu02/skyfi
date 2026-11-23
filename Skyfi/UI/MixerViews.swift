@@ -9,6 +9,8 @@ struct MixerBar: View {
     var onOpen: () -> Void
 
     var body: some View {
+        @Bindable var mixer = mixer
+        VStack(spacing: 8) {
         HStack(spacing: 12) {
             Button(action: onOpen) {
                 HStack(spacing: 10) {
@@ -39,6 +41,18 @@ struct MixerBar: View {
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Theme.text)
                         .frame(width: 40, height: 40)
+                }
+            }
+        }
+            // Music volume right on the player: turn it down to hear the tower over it.
+            if mixer.music != nil {
+                HStack(spacing: 10) {
+                    Image(systemName: "music.note").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.plane)
+                        .frame(width: 26)
+                    Slider(value: $mixer.musicVolume, in: 0...1)
+                        .tint(Theme.plane)
+                        .accessibilityLabel("Music volume")
+                    Image(systemName: "speaker.wave.2.fill").font(.system(size: 11)).foregroundStyle(Theme.muted)
                 }
             }
         }

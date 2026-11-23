@@ -15,6 +15,11 @@ enum Theme {
     static let uiCyan = UIColor(red: 0.35, green: 0.82, blue: 1.0, alpha: 1)
     static let uiGround = UIColor(white: 0.75, alpha: 0.9)
     static let uiApproach = UIColor(red: 1.0, green: 0.42, blue: 0.35, alpha: 1)
+    /// Planes are yellow; the one that's highlighted (picked, or being talked to) is orange.
+    static let uiPlane = UIColor(red: 1.0, green: 0.84, blue: 0.04, alpha: 1)
+    static let uiHighlight = UIColor(red: 1.0, green: 0.55, blue: 0.0, alpha: 1)
+    static let plane = Color(uiPlane)
+    static let highlight = Color(uiHighlight)
 
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .semibold) -> Font {
         .system(size: size, weight: weight, design: .monospaced)

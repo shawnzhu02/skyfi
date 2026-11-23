@@ -34,6 +34,25 @@ final class LiveATCBrowser {
     /// The Cloudflare "checking your browser" page has been up for a while.
     private(set) var stuckOnCheck = false
     @ObservationIgnored private var checkTask: Task<Void, Never>?
+
+    /// One feed as LiveATC's airport page lists it.
+    struct ListedFeed: Equatable {
+        let mount: String
+        let name: String
+        /// true when the page says UP, false for DOWN, nil when it didn't say.
+        let up: Bool?
+    }
+
+    struct Listing {
+        let feeds: [ListedFeed]
+        let time: Date
+    }
+
+    /// The real feeds per airport (ICAO), read from LiveATC's airport page.
+    private(set) var listings: [String: Listing] = [:]
+    /// A connect waiting for the airport page's feed list, and what to play if the list never comes.
+    @ObservationIgnored private var pendingPick: (icao: String, fallback: ATCFeed?)?
+    @ObservationIgnored private var pickTimeout: Task<Void, Never>?
     /// The stuck check already got one fresh start (cookies cleared, page reloaded) this time.
     @ObservationIgnored private var retriedCheck = false
 
@@ -58,6 +77,8 @@ final class LiveATCBrowser {
         let script = WKUserScript(source: Self.mediaScript, injectionTime: .atDocumentEnd,
                                   forMainFrameOnly: false, in: .defaultClient)
         config.userContentController.addUserScript(script)
+        config.userContentController.addUserScript(WKUserScript(source: Self.feedListScript, injectionTime: .atDocumentEnd,
+                                                                forMainFrameOnly: true, in: .defaultClient))
         config.userContentController.add(helper, contentWorld: .defaultClient, name: "skyfiMedia")
 
         webView = WKWebView(frame: .zero, configuration: config)
@@ -98,6 +119,8 @@ final class LiveATCBrowser {
 
     /// Opens the player page for a feed and shows the panel.
     func open(_ feed: ATCFeed) {
+        pendingPick = nil
+        pickTimeout?.cancel()
         let same = isOpen && self.feed?.mount == feed.mount
         self.feed = feed
         isOpen = true
@@ -110,6 +133,115 @@ final class LiveATCBrowser {
         retriedCheck = false
         load(Self.playerURL(for: feed))
         startPolling()
+    }
+
+    /// Connects to an airport's best live feed: reads LiveATC's own feed list for it (from the
+    /// airport page, or the last 10 minutes' copy), then plays the first feed that's up: tower,
+    /// else approach, else departure, else anything else. Falls back to `fallback` when the
+    /// page lists nothing, or stays on the page when every feed is down.
+    func openBest(icao: String, fallback: ATCFeed?) {
+        let icao = icao.uppercased()
+        if let listing = listings[icao], Date().timeIntervalSince(listing.time) < 600 {
+            dlog("web", "using LiveATC's feed list for \(icao) from \(Int(Date().timeIntervalSince(listing.time))) s ago")
+            pick(from: listing.feeds, icao: icao, fallback: fallback)
+            return
+        }
+        openAirport(icao)
+        pendingPick = (icao, fallback)
+        pickTimeout?.cancel()
+        // The page (and maybe Cloudflare's check) gets 25 s to list the feeds.
+        pickTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(25))
+            guard let self, !Task.isCancelled, let pending = self.pendingPick, pending.icao == icao else { return }
+            self.pendingPick = nil
+            dlog("web", "no feed list from LiveATC for \(icao) after 25 s")
+            if let fallback = pending.fallback { self.playPicked(fallback) }
+        }
+    }
+
+    /// The airport page listed its feeds.
+    fileprivate func feedsListed(icao raw: String, json: String) {
+        let icao = raw.uppercased()
+        let feeds = Self.parseListed(json)
+        dlog("web", "LiveATC lists \(feeds.count) feeds at \(icao): " + feeds.map { "\($0.mount)=\($0.up.map { $0 ? "up" : "down" } ?? "?")" }.joined(separator: " "))
+        guard !icao.isEmpty else { return }
+        if !feeds.isEmpty { listings[icao] = Listing(feeds: feeds, time: Date()) }
+        guard let pending = pendingPick, pending.icao == icao else { return }
+        pendingPick = nil
+        pickTimeout?.cancel()
+        pick(from: feeds, icao: icao, fallback: pending.fallback)
+    }
+
+    private func pick(from feeds: [ListedFeed], icao: String, fallback: ATCFeed?) {
+        if let best = Self.best(feeds) {
+            playPicked(Self.atcFeed(best, icao: icao))
+        } else if feeds.isEmpty, let fallback {
+            playPicked(fallback)
+        } else if !feeds.isEmpty {
+            // Every feed here is down: leave LiveATC's page up so you can see for yourself.
+            if !isOpen || pageURL.flatMap(Self.feed(fromPlayerURL:)) != nil { openAirport(icao) }
+            setMedia(.failed("Every LiveATC feed at \(icao) is down right now"))
+        } else {
+            if !isOpen { openAirport(icao) }
+        }
+    }
+
+    private func playPicked(_ feed: ATCFeed) {
+        dlog("web", "playing \(feed.mount) (\(feed.name))")
+        open(feed)
+        Mixer.shared.browserFeedChanged(feed)
+    }
+
+    /// Feeds for the menu: LiveATC's list for the airport, if Skyfi has read it.
+    func listedFeeds(_ icao: String?) -> [ListedFeed] {
+        icao.flatMap { listings[$0.uppercased()]?.feeds } ?? []
+    }
+
+    nonisolated static func parseListed(_ json: String) -> [ListedFeed] {
+        guard let data = json.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        var seen = Set<String>()
+        return items.compactMap { item in
+            guard let mount = item["mount"] as? String, !mount.isEmpty,
+                  mount.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }),
+                  seen.insert(mount).inserted else { return nil }
+            let name = (item["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let status = (item["status"] as? String)?.uppercased()
+            return ListedFeed(mount: mount, name: name.isEmpty ? mount : String(name.prefix(60)),
+                              up: status == "UP" ? true : (status == "DOWN" ? false : nil))
+        }
+    }
+
+    /// Tower first, then approach, departure, then anything else (ground, center, ATIS last).
+    nonisolated static func rank(_ feed: ListedFeed) -> Int {
+        let text = (feed.name + " " + feed.mount).lowercased()
+        if text.contains("atis") { return 4 }
+        if text.contains("tower") || text.contains("twr") { return 0 }
+        if text.contains("app") { return 1 }
+        if text.contains("dep") { return 2 }
+        return 3
+    }
+
+    /// The feed to play: up before unknown, never one marked down; best rank, then page order.
+    nonisolated static func best(_ feeds: [ListedFeed]) -> ListedFeed? {
+        feeds.enumerated()
+            .filter { $0.element.up != false }
+            .min { a, b in
+                (a.element.up == true ? 0 : 1, rank(a.element), a.offset) < (b.element.up == true ? 0 : 1, rank(b.element), b.offset)
+            }?.element
+    }
+
+    nonisolated static func atcFeed(_ listed: ListedFeed, icao: String) -> ATCFeed {
+        if let known = Catalog.feeds.first(where: { $0.mount == listed.mount }) {
+            return ATCFeed(mount: known.mount, airport: known.airport, name: listed.name, kind: known.kind)
+        }
+        let kind: ATCFeed.Kind
+        switch rank(listed) {
+        case 1: kind = .approach
+        case 2: kind = .departure
+        default: kind = .tower
+        }
+        return ATCFeed(mount: listed.mount, airport: icao.uppercased(), name: listed.name, kind: kind)
     }
 
     /// LiveATC's page for an airport, to pick one of its feeds there.
@@ -166,6 +298,8 @@ final class LiveATCBrowser {
     func close() {
         guard isOpen else { return }
         dlog("web", "close")
+        pendingPick = nil
+        pickTimeout?.cancel()
         pollTask?.cancel()
         pollTask = nil
         checkTask?.cancel()
@@ -344,6 +478,46 @@ final class LiveATCBrowser {
         }
     }
 
+    /// Reads LiveATC's airport page (search/?icao=...): each feed's mount (from its player link),
+    /// name and UP/DOWN status. Runs in Skyfi's own script world; reads the page, changes nothing.
+    private static let feedListScript = #"""
+    (function () {
+      if (!/(^|\.)liveatc\.net$/.test(location.hostname)) { return; }
+      if (location.pathname.indexOf('/search') !== 0) { return; }
+      var icao = (new URLSearchParams(location.search).get('icao') || '').toUpperCase();
+      var seen = {}, feeds = [];
+      var links = document.querySelectorAll('a[href*="mount="], a[onclick*="mount="], a[onclick*="Popup("]');
+      for (var i = 0; i < links.length; i++) {
+        var a = links[i];
+        var source = (a.getAttribute('href') || '') + ' ' + (a.getAttribute('onclick') || '');
+        var m = source.match(/mount=([A-Za-z0-9_]+)/) || source.match(/Popup\(\s*'([A-Za-z0-9_]+)'/);
+        if (!m || seen[m[1]]) { continue; }
+        seen[m[1]] = true;
+        // The smallest block around this link that holds a status, if it holds only this feed.
+        var box = a, text = '';
+        for (var up = 0; up < 10 && box; up++) {
+          box = box.parentElement;
+          if (!box) { break; }
+          var t = box.innerText || '';
+          if (/Feed Status/i.test(t)) {
+            var mounts = (box.innerHTML.match(/mount=([A-Za-z0-9_]+)/g) || []).filter(function (v, k, all) { return all.indexOf(v) === k; });
+            if (mounts.length <= 1) { text = t; }
+            break;
+          }
+        }
+        var status = (text.match(/Feed Status:\s*(UP|DOWN)/i) || [])[1] || '';
+        var name = '';
+        var lines = text.split('\n');
+        for (var k = 0; k < lines.length; k++) {
+          var line = lines[k].trim();
+          if (line && !/Feed Status|Listeners|Listen|Archive|Facilities|Frequencies|Metar/i.test(line)) { name = line; break; }
+        }
+        feeds.push({ mount: m[1], name: name, status: status });
+      }
+      try { window.webkit.messageHandlers.skyfiMedia.postMessage({ type: 'feeds', detail: JSON.stringify(feeds), host: icao }); } catch (e) {}
+    })();
+    """#
+
     /// Watches the page's audio elements (events only, never their address) so Skyfi knows when
     /// the tower is playing and why it stopped.
     private static let mediaScript = #"""
@@ -377,6 +551,10 @@ private final class BrowserHelper: NSObject, WKNavigationDelegate, WKUIDelegate,
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        if type == "feeds" {
+            owner?.feedsListed(icao: body["host"] as? String ?? "", json: body["detail"] as? String ?? "[]")
+            return
+        }
         owner?.handleMedia(type: type, detail: body["detail"] as? String ?? "", host: body["host"] as? String ?? "")
     }
 
@@ -503,7 +681,22 @@ struct LiveATCPanel: View {
                 if browser.canGoBack {
                     Button { browser.goBack() } label: { Label("Back", systemImage: "chevron.backward") }
                 }
-                Button { browser.showAllFeeds() } label: { Label("Other feeds here", systemImage: "list.bullet") }
+                let icao = browser.feed?.airport ?? mixer.airport
+                let listed = browser.listedFeeds(icao)
+                if let icao, !listed.isEmpty {
+                    Section("Feeds at \(icao)") {
+                        ForEach(listed, id: \.mount) { item in
+                            Button {
+                                mixer.playBrowserFeed(LiveATCBrowser.atcFeed(item, icao: icao))
+                            } label: {
+                                Label(item.name + (item.up == false ? " (down)" : ""),
+                                      systemImage: browser.feed?.mount == item.mount ? "speaker.wave.2.fill"
+                                        : (item.up == false ? "moon.zzz" : "dot.radiowaves.left.and.right"))
+                            }
+                        }
+                    }
+                }
+                Button { browser.showAllFeeds() } label: { Label("LiveATC's page for this airport", systemImage: "list.bullet") }
                 Button { tall.toggle() } label: {
                     Label(tall ? "Shorter panel" : "Taller panel",
                           systemImage: tall ? "rectangle.compress.vertical" : "rectangle.expand.vertical")

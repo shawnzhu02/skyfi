@@ -49,6 +49,11 @@ final class PlaneAnnotationView: MKAnnotationView {
                                                withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .bold))?
         .withRenderingMode(.alwaysTemplate)
     private var byAltitude = false
+    /// The plane being talked to turns orange (and a bit bigger) while its glow lasts.
+    private static let talkingImage = UIImage(systemName: "airplane",
+                                              withConfiguration: UIImage.SymbolConfiguration(pointSize: 23, weight: .bold))?
+        .withTintColor(Theme.uiHighlight, renderingMode: .alwaysOriginal)
+    private var talkingTint = false
 
     /// tar1090-style altitude colors: orange low, through yellow and green, to blue and violet high.
     static func altitudeColor(_ feet: Int?) -> UIColor {
@@ -76,8 +81,9 @@ final class PlaneAnnotationView: MKAnnotationView {
 
     private static let images: [Style: UIImage] = {
         var result: [Style: UIImage] = [:]
-        let colors: [Style: UIColor] = [.airborne: Theme.uiAmber, .ground: Theme.uiGround,
-                                        .approach: Theme.uiApproach, .selected: Theme.uiCyan,
+        // Every flying plane is yellow (approach too); the picked one is orange.
+        let colors: [Style: UIColor] = [.airborne: Theme.uiPlane, .ground: Theme.uiGround,
+                                        .approach: Theme.uiPlane, .selected: Theme.uiHighlight,
                                         .emergency: UIColor.systemRed]
         for (style, color) in colors {
             let size: CGFloat = style == .selected ? 26 : (style == .ground ? 14 : 19)
@@ -153,10 +159,11 @@ final class PlaneAnnotationView: MKAnnotationView {
             if !tintByAltitude { glyph.image = Self.images[style] }
             byAltitude = tintByAltitude
             self.style = style
-            glyph.layer.shadowColor = (style == .selected ? Theme.uiCyan : UIColor.black).cgColor
+            glyph.layer.shadowColor = (style == .selected ? Theme.uiHighlight : UIColor.black).cgColor
             glyph.layer.shadowRadius = style == .selected ? 8 : 2
             zPriority = style == .selected ? .max : (style == .approach || style == .emergency ? .defaultSelected : .defaultUnselected)
         }
+        if talkingTint { glyph.image = Self.talkingImage }
         // The SF Symbol "airplane" points east, so 90° is "no turn".
         let angle = ((plane.track ?? 90) - mapHeading - 90) * .pi / 180
         let scale = Self.scale(forType: plane.type)
@@ -194,6 +201,10 @@ final class PlaneAnnotationView: MKAnnotationView {
     /// Glow ring and speech bubble while this plane is on the frequency.
     func setTalk(_ talk: TalkStore.Talk?) {
         guard let talk, talk.isFresh else {
+            if talkingTint {
+                talkingTint = false
+                glyph.image = byAltitude ? Self.altitudeImage : Self.images[style ?? .airborne]
+            }
             if !ring.isHidden {
                 ring.removeAllAnimations()
                 ring.isHidden = true
@@ -202,7 +213,12 @@ final class PlaneAnnotationView: MKAnnotationView {
             }
             return
         }
-        let color = talk.speaker == .pilot ? Theme.uiAmber : Theme.uiCyan
+        let color = Theme.uiHighlight
+        // An emergency stays red; everyone else being talked to turns orange.
+        if style != .emergency, !talkingTint {
+            talkingTint = true
+            glyph.image = Self.talkingImage
+        }
         ring.strokeColor = color.cgColor
         ring.isHidden = false
         if ring.animation(forKey: "pulse") == nil {
