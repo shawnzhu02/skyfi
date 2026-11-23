@@ -1,17 +1,20 @@
 import SwiftUI
 import UIKit
 
-/// Skyfi look: night-radar dark with amber planes and cyan ATC.
+/// Skyfi look: clean dark map, yellow planes and accents, orange for whatever is highlighted,
+/// white text, blue for the tower and airports.
 enum Theme {
-    static let background = Color(red: 0.04, green: 0.06, blue: 0.08)
-    static let panel = Color(red: 0.08, green: 0.10, blue: 0.13).opacity(0.92)
-    static let stroke = Color.white.opacity(0.08)
-    static let amber = Color(red: 1.0, green: 0.71, blue: 0.28)
+    static let background = Color(red: 0.05, green: 0.05, blue: 0.06)
+    static let panel = Color(red: 0.09, green: 0.09, blue: 0.11).opacity(0.95)
+    static let stroke = Color.white.opacity(0.07)
+    static let amber = Color(red: 1.0, green: 0.84, blue: 0.04)
+    /// Live and working.
+    static let live = Color(red: 0.2, green: 0.85, blue: 0.4)
     static let cyan = Color(red: 0.35, green: 0.82, blue: 1.0)
     static let text = Color.white
     static let muted = Color.white.opacity(0.6)
 
-    static let uiAmber = UIColor(red: 1.0, green: 0.71, blue: 0.28, alpha: 1)
+    static let uiAmber = UIColor(red: 1.0, green: 0.84, blue: 0.04, alpha: 1)
     static let uiCyan = UIColor(red: 0.35, green: 0.82, blue: 1.0, alpha: 1)
     static let uiGround = UIColor(white: 0.75, alpha: 0.9)
     static let uiApproach = UIColor(red: 1.0, green: 0.42, blue: 0.35, alpha: 1)
@@ -33,8 +36,10 @@ enum Theme {
 struct Panel: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.stroke))
+            // Solid dark cards read better over a busy satellite map than frosted glass.
+            .background(Theme.panel, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.stroke))
+            .shadow(color: .black.opacity(0.35), radius: 8, y: 2)
     }
 }
 

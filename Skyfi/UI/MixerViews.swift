@@ -20,12 +20,12 @@ struct MixerBar: View {
                         .symbolEffect(.variableColor.iterative, isActive: mixer.isPlaying)
                         .frame(width: 26)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(mixer.music?.title ?? "Pick music")
+                        Text(mixer.music.map { "Music: \($0.title)" } ?? "Add music")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Theme.text)
                             .lineLimit(1)
-                        Text(mixer.feed.map { "+ \($0.name)" } ?? mixer.airport.map { "\($0) · tower off" } ?? "Tap an airport to connect")
-                            .font(.system(size: 11))
+                        Text(mixer.feed.map { "Tower: \($0.name)" } ?? "Tower: none yet")
+                            .font(.system(size: 12))
                             .foregroundStyle(mixer.feed == nil ? Theme.muted : Theme.cyan)
                             .lineLimit(1)
                     }

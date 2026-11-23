@@ -373,6 +373,34 @@ struct RootView: View {
         }
     }
 
+    private var statusTitle: String {
+        guard let airport = traffic.connected else { return "Skyfi" }
+        guard let feed = mixer.feed else { return "\(airport.name) · tower off" }
+        if mixer.towerInBrowser {
+            if browser.suspended { return "Paused · \(feed.name)" }
+            switch browser.media {
+            case .playing: return "Listening to \(feed.name)"
+            case .loading: return "Connecting to \(feed.name)…"
+            case .failed: return "\(feed.name) isn't playing"
+            case .paused, .none: return "\(feed.name) · tap play below"
+            }
+        }
+        switch mixer.atcStatus {
+        case .playing: return "Listening to \(feed.name)"
+        case .loading: return "Connecting to \(feed.name)…"
+        case .failed: return "\(feed.name) isn't playing"
+        default: return feed.name
+        }
+    }
+
+    private var statusColor: Color {
+        guard traffic.connected != nil else { return Theme.amber }
+        let playing = mixer.towerInBrowser ? (browser.media == .playing && !browser.suspended) : mixer.atcStatus == .playing
+        if playing { return Theme.live }
+        if case .failed = browser.media, mixer.towerInBrowser { return .red }
+        return Theme.muted
+    }
+
     private func pick(planeID: String) {
         guard let plane = traffic.planes[planeID] else { return }
         selectedAirport = nil
@@ -383,13 +411,14 @@ struct RootView: View {
     private var topBar: some View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("skyfi").font(Theme.rounded(17, .heavy)).foregroundStyle(Theme.amber)
-                    if let airport = traffic.connected {
-                        Circle().fill(traffic.failing ? Color.red : Color.green).frame(width: 6, height: 6)
-                        Text("\(airport.code)\(mixer.feed.map { " · \($0.kind.label)" } ?? "") · \(traffic.planes.count) planes")
-                            .font(Theme.mono(11)).foregroundStyle(Theme.muted)
-                    }
+                // One plain sentence about what Skyfi is doing, then the plane count.
+                HStack(spacing: 7) {
+                    Circle().fill(statusColor).frame(width: 8, height: 8)
+                    Text(statusTitle).font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
+                }
+                if let airport = traffic.connected {
+                    Text(traffic.failing ? "Plane data is offline, retrying" : "\(traffic.planes.count) planes around \(airport.code)")
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
                 if Self.busyTopBar, let airport = traffic.connected, let metar = WeatherStore.shared.metar(airport.icao) {
                     HStack(spacing: 6) {
@@ -407,7 +436,7 @@ struct RootView: View {
                     }
                 }
                 if traffic.connected == nil {
-                    Text("Tap a cyan airport to connect").font(.system(size: 10)).foregroundStyle(Theme.muted)
+                    Text("Tap a blue airport to listen to its tower").font(.system(size: 12)).foregroundStyle(Theme.muted)
                 }
             }
             .padding(.horizontal, 12)

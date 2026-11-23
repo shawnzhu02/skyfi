@@ -58,10 +58,10 @@ struct AirportSheet: View {
                             onConnect()
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Label(isConnected ? "Show LiveATC's feeds here" : "Find feeds on LiveATC",
-                                      systemImage: "magnifyingglass")
-                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.cyan)
-                                Text("Skyfi has no feed list for \(airport.code). LiveATC's page shows any it has; pick one there.")
+                                Label(isConnected ? "Show LiveATC's feeds here" : "Listen live",
+                                      systemImage: "antenna.radiowaves.left.and.right")
+                                    .font(.system(size: 16, weight: .bold)).foregroundStyle(Theme.cyan)
+                                Text("Skyfi looks up LiveATC's feeds for \(airport.code) and plays one that's live.")
                                     .font(.system(size: 12)).foregroundStyle(Theme.muted)
                             }
                         }
@@ -180,34 +180,36 @@ struct AirportSheet: View {
                 onConnect()
             }
         } label: {
+            // The one big action on the card: yellow to start listening, quiet once you are.
             HStack(spacing: 10) {
-                Image(systemName: isConnected ? "antenna.radiowaves.left.and.right.circle.fill" : "antenna.radiowaves.left.and.right")
+                Image(systemName: isConnected ? "stop.circle.fill" : "headphones")
                     .font(.system(size: 20, weight: .semibold))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 16, weight: .bold))
+                    Text(title).font(.system(size: 17, weight: .bold))
                     if let detail {
-                        Text(detail).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                        Text(detail).font(.system(size: 12)).opacity(0.75).lineLimit(2)
                     }
                 }
                 Spacer()
             }
-            .foregroundStyle(Theme.cyan)
-            .padding(.vertical, 6)
+            .foregroundStyle(isConnected ? Theme.text : Color.black)
+            .padding(14)
+            .background(isConnected ? Color.white.opacity(0.1) : Theme.amber, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
     private var title: String {
-        guard isConnected else { return "Connect" }
-        if mixer.feed == nil, !Catalog.feeds(at: airport.icao).isEmpty { return "Start tower" }
+        guard isConnected else { return "Listen live" }
+        if mixer.feed == nil, !Catalog.feeds(at: airport.icao).isEmpty { return "Listen again" }
         switch mixer.atcStatus {
         case .loading: return "Connecting…"
-        case .failed: return "Retry now"
-        default: return "Disconnect"
+        case .failed: return "Try again"
+        default: return "Stop listening"
         }
     }
 
     private var detail: String? {
-        guard isConnected else { return Catalog.feed(at: airport.icao)?.name }
+        guard isConnected else { return "Plays the live tower from LiveATC and shows its planes" }
         switch mixer.atcStatus {
         case .failed(let message): return message
         case .paused: return "Connected · \(mixer.feed?.name ?? "") · paused"
