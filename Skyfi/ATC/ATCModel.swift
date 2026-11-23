@@ -286,7 +286,7 @@ actor WhisperEngine {
             promptTokens = Array(tokens.suffix(120))
         }
         let options = DecodingOptions(
-            task: .transcribe, language: "en", temperature: 0, temperatureFallbackCount: 2,
+            task: .transcribe, language: "en", temperature: 0, temperatureFallbackCount: 0,
             usePrefillPrompt: true, skipSpecialTokens: true, withoutTimestamps: true,
             promptTokens: promptTokens, suppressBlank: true, noSpeechThreshold: 0.6)
         guard let results = try? await pipe.transcribe(audioArray: samples, decodeOptions: options),

@@ -11,6 +11,10 @@ struct Transmission {
 /// Splits the tower audio into transmissions by energy against an adaptive noise floor,
 /// the way a radio's squelch opens and closes. Not thread-safe: use from one queue.
 final class Squelch {
+    /// Longest transmission before it is cut and transcribed anyway. Shorter for subtitles, so
+    /// they follow the tower instead of waiting for a long gap.
+    var maxFramesOverride: Int?
+
     enum Event {
         case opened
         case closed(Transmission?)
@@ -99,7 +103,7 @@ final class Squelch {
         currentFrames += 1
         framesSinceOpen += 1
         below = db < floor + Self.closeAboveFloor ? below + 1 : 0
-        if below >= Self.framesToClose || currentFrames >= Self.maxFrames {
+        if below >= Self.framesToClose || currentFrames >= (maxFramesOverride ?? Self.maxFrames) {
             isOpen = false
             above = 0
             // Frames that held signal: the ones that opened it plus the open ones before the quiet tail.

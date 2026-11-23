@@ -216,11 +216,15 @@ final class LiveATCBrowser {
     /// Tower first, then approach, departure, then anything else (ground, center, ATIS last).
     nonisolated static func rank(_ feed: ListedFeed) -> Int {
         let text = (feed.name + " " + feed.mount).lowercased()
-        if text.contains("atis") { return 4 }
-        if text.contains("tower") || text.contains("twr") { return 0 }
-        if text.contains("app") { return 1 }
-        if text.contains("dep") { return 2 }
-        return 3
+        if text.contains("atis") { return 5 }
+        if text.contains("tower") || text.contains("twr") {
+            // A tower-only feed beats one shared with ground or clearance (busy, mostly taxi talk).
+            let shared = ["ground", "gnd", "delivery", "clearance", "/", " del"].contains { text.contains($0) }
+            return shared ? 1 : 0
+        }
+        if text.contains("app") { return 2 }
+        if text.contains("dep") { return 3 }
+        return 4
     }
 
     /// The feed to play: up before unknown, never one marked down; best rank, then page order.
@@ -228,7 +232,7 @@ final class LiveATCBrowser {
         feeds.enumerated()
             .filter { $0.element.up != false }
             .min { a, b in
-                (a.element.up == true ? 0 : 1, rank(a.element), a.offset) < (b.element.up == true ? 0 : 1, rank(b.element), b.offset)
+                (rank(a.element), a.element.up == true ? 0 : 1, a.offset) < (rank(b.element), b.element.up == true ? 0 : 1, b.offset)
             }?.element
     }
 
@@ -238,8 +242,8 @@ final class LiveATCBrowser {
         }
         let kind: ATCFeed.Kind
         switch rank(listed) {
-        case 1: kind = .approach
-        case 2: kind = .departure
+        case 2: kind = .approach
+        case 3: kind = .departure
         default: kind = .tower
         }
         return ATCFeed(mount: listed.mount, airport: icao.uppercased(), name: listed.name, kind: kind)

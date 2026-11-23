@@ -546,8 +546,18 @@ final class Mixer {
         }
     }
 
+    @ObservationIgnored private var subtitleMute = false
+
+    /// Subtitles record Skyfi's own sound: the music is silenced while they do, so the tower is clean.
+    func setSubtitleMute(_ mute: Bool) {
+        guard mute != subtitleMute else { return }
+        subtitleMute = mute
+        dlog("audio", mute ? "music muted for subtitles" : "music back after subtitles")
+        applyVolumes()
+    }
+
     private func applyVolumes() {
-        let musicGain = min(1, 2 * (1 - mix)) * duckGain
+        let musicGain = subtitleMute ? 0 : min(1, 2 * (1 - mix)) * duckGain
         let atcGain = min(1, 2 * mix)
         musicPlayer.volume = musicVolume * musicGain
         atcPlayer.volume = atcVolume * atcGain

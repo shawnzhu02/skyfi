@@ -32,7 +32,17 @@ final class FeedListTests: XCTestCase {
         let feeds = [Listed(mount: "kbos_atis", name: "KBOS ATIS", up: true),
                      Listed(mount: "kbos_twr2", name: "KBOS Tower", up: nil),
                      Listed(mount: "kbos_twr", name: "KBOS Del/Gnd/Twr", up: true)]
-        XCTAssertEqual(LiveATCBrowser.best(feeds)?.mount, "kbos_twr")
+        XCTAssertEqual(LiveATCBrowser.best(feeds)?.mount, "kbos_twr2")
+    }
+
+    func testTowerOnlyBeatsSharedGroundTower() {
+        let feeds = [Listed(mount: "kjfk_gnd_twr", name: "JFK Ground/Tower", up: true),
+                     Listed(mount: "kjfk_twr", name: "JFK Tower", up: true)]
+        XCTAssertEqual(LiveATCBrowser.best(feeds)?.mount, "kjfk_twr")
+        // Shared feed still beats approach when it is the only tower.
+        let only = [Listed(mount: "kjfk_app", name: "NY Approach", up: true),
+                    Listed(mount: "kjfk_gnd_twr", name: "JFK Ground/Tower", up: true)]
+        XCTAssertEqual(LiveATCBrowser.best(only)?.mount, "kjfk_gnd_twr")
     }
 
     func testBestIsNilWhenAllDown() {
@@ -41,10 +51,11 @@ final class FeedListTests: XCTestCase {
 
     func testRank() {
         XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kjfk_twr", name: "JFK Tower", up: true)), 0)
-        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kny_app", name: "NY Approach", up: true)), 1)
-        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kny_dep", name: "NY Departure", up: true)), 2)
-        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kzbw", name: "Boston Center", up: true)), 3)
-        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kbos_atis", name: "KBOS ATIS", up: true)), 4)
+        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kjfk_gnd_twr", name: "JFK Ground/Tower", up: true)), 1)
+        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kny_app", name: "NY Approach", up: true)), 2)
+        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kny_dep", name: "NY Departure", up: true)), 3)
+        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kzbw", name: "Boston Center", up: true)), 4)
+        XCTAssertEqual(LiveATCBrowser.rank(Listed(mount: "kbos_atis", name: "KBOS ATIS", up: true)), 5)
     }
 
     func testFeedFromListing() {

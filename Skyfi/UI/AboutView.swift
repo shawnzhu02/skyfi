@@ -30,6 +30,8 @@ struct AboutView: View {
                     .tint(Theme.cyan)
                 Toggle("Zoom to the plane being talked to", isOn: $autoZoomTalking)
                     .tint(Theme.cyan)
+                Toggle("Mute music while subtitles are on", isOn: $talk.muteMusicForSubtitles)
+                    .tint(Theme.cyan)
             } header: {
                 Text("Subtitles")
             } footer: {

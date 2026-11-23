@@ -26,6 +26,8 @@ struct TranscriptStrip: View {
                         row(icon: "exclamationmark.triangle", text: problem)
                     } else if talk.lines.isEmpty {
                         row(icon: talk.transmitting ? "waveform" : "ear", text: talk.transmitting ? "Listening…" : "Waiting for the tower to talk…")
+                    } else if talk.transcribing {
+                        row(icon: "ellipsis.bubble", text: "Transcribing…")
                     }
                     // Subtitles: newest at the bottom, the callsign in orange.
                     ForEach(Array(talk.lines.prefix(2).reversed())) { line in

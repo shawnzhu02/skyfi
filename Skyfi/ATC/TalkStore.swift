@@ -68,6 +68,17 @@ final class TalkStore {
         didSet { if foreground != oldValue { updateCapture() } }
     }
 
+    /// Music is part of the recording and keeps the squelch from ever hearing a pause, so
+    /// transcripts come late and garbled. On by default: music is muted while subtitles record.
+    var muteMusicForSubtitles: Bool = UserDefaults.standard.object(forKey: "talk.muteMusic") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(muteMusicForSubtitles, forKey: "talk.muteMusic")
+            Mixer.shared.setSubtitleMute(muteMusicForSubtitles && PlaybackCapture.shared.running)
+        }
+    }
+    /// A transmission is being transcribed right now.
+    private(set) var transcribing = false
+
     /// Live subtitles for LiveATC's player: Skyfi records its own sound (iOS asks once) and the
     /// speech model transcribes it. Off until you turn it on.
     var subtitles: Bool = UserDefaults.standard.bool(forKey: "talk.subtitles") {
@@ -106,6 +117,7 @@ final class TalkStore {
             self?.stopTransmitting()
         }
         let queue = tap.queue
+        squelch.maxFramesOverride = nil
         PlaybackCapture.shared.onAudio = { samples in
             // Squelch only ever runs on the tap's queue.
             queue.async {
@@ -140,15 +152,20 @@ final class TalkStore {
     private func updateCapture() {
         let want = subtitles && enabled && foreground && browserFeed != nil && Mixer.shared.towerInBrowser
         let capture = PlaybackCapture.shared
+        // 6 s chunks while recording: subtitles trail the tower by seconds, not by a long gap.
+        let squelch = self.squelch
+        tap.queue.async { squelch.maxFramesOverride = want ? 300 : nil }
         if want, !capture.running {
             capture.start { [weak self] problem in
                 guard let self else { return }
                 self.captureProblem = problem
+                Mixer.shared.setSubtitleMute(problem == nil && self.muteMusicForSubtitles)
                 // Refused: turn the switch back off so it doesn't keep asking.
                 if problem != nil { self.subtitles = false; self.captureProblem = problem }
             }
         } else if !want, capture.running {
             capture.stop()
+            Mixer.shared.setSubtitleMute(false)
         }
     }
 
@@ -220,6 +237,8 @@ final class TalkStore {
         let candidates = currentCandidates()
         let prompt = useHints ? matcher.hint(for: candidates) : nil
         let started = Date()
+        transcribing = true
+        defer { transcribing = false }
         let airport = feedAirport?.icao
         guard let heard = await model.transcribe(transmission.samples, prompt: prompt) else {
             dlog("talk", String(format: "%.1f s transmission: no speech", transmission.duration))
