@@ -58,8 +58,6 @@ struct RootView: View {
     @AppStorage("keepAwake") private var keepAwake = false
     @AppStorage("dataBlocks") private var dataBlocks = false
     @AppStorage("hideGround") private var hideGround = false
-    /// Zoom to the plane the tower is talking to when Skyfi is sure which one it is.
-    @AppStorage("autoZoomTalking") private var autoZoomTalking = true
     @State private var locator = Locator.shared
     @State private var locationDenied = false
 
@@ -98,7 +96,6 @@ struct RootView: View {
                     PlaneCard(plane: plane, following: $following, onAirport: { selectedAirport = $0 }) { selectedPlaneID = nil }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                TranscriptStrip(onPick: pick(planeID:), onOpen: { showTranscript = true })
                 if browser.isOpen, !browser.expanded {
                     LiveATCMiniBar()
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -255,15 +252,6 @@ struct RootView: View {
 
     private func observedMore(_ view: some View) -> some View {
         view
-        .onChange(of: talk.lines.first?.id) { _, _ in
-            // A confident callsign match (the matcher only names a plane when it's clearly ahead).
-            guard autoZoomTalking, let line = talk.lines.first, let id = line.planeID,
-                  let plane = traffic.planes[id], Date().timeIntervalSince(line.time) < 30 else { return }
-            following = false
-            selectedAirport = nil
-            selectedPlaneID = plane.id
-            focus = MapFocus(plane.position(at: Date()), spanDegrees: 0.25)
-        }
         .sensoryFeedback(.warning, trigger: traffic.emergencyPlane?.id) { _, new in new != nil }
         .onChange(of: selectedPlaneID) { _, new in
             // Picked something else (or closed the card): stop polling around a pinned plane.

@@ -81,22 +81,27 @@ struct AirportSheet: View {
                     }
                 }
 
-                // Other feeds are one menu away in the LiveATC panel.
-                if RootView.busyTopBar, mixer.towerInBrowser, feeds.count > 1 {
-                    Section("Feeds") {
-                        ForEach(feeds) { feed in
-                            Button {
-                                mixer.play(feed, at: airport)
-                                onConnect()
-                            } label: {
-                                HStack {
-                                    Text(feed.kind.tag).font(Theme.mono(11, .bold)).foregroundStyle(Theme.cyan).frame(width: 34, alignment: .leading)
-                                    Text(feed.name).font(.system(size: 14)).foregroundStyle(Theme.text)
-                                    Spacer()
-                                    if isConnected, mixer.feed?.mount == feed.mount {
-                                        Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.cyan)
+                // Every station here, one tap each: tower #1, #2, ground, ATIS, approach, departure.
+                if mixer.towerInBrowser {
+                    ForEach(LiveATCBrowser.shared.stations(for: airport.icao)) { group in
+                        Section(group.title) {
+                            ForEach(group.feeds, id: \.mount) { item in
+                                Button {
+                                    mixer.playBrowserFeed(LiveATCBrowser.atcFeed(item, icao: airport.icao))
+                                    onConnect()
+                                } label: {
+                                    HStack {
+                                        Text(item.name).font(.system(size: 14))
+                                            .foregroundStyle(item.up == false ? Theme.muted : Theme.text)
+                                        Spacer()
+                                        if item.up == false {
+                                            Text("down").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                                        } else if isConnected, mixer.feed?.mount == item.mount {
+                                            Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.cyan)
+                                        }
                                     }
                                 }
+                                .disabled(item.up == false)
                             }
                         }
                     }

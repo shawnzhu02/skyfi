@@ -81,7 +81,7 @@ final class TalkStore {
 
     /// Live subtitles for LiveATC's player: Skyfi records its own sound (iOS asks once) and the
     /// speech model transcribes it. Off until you turn it on.
-    var subtitles: Bool = UserDefaults.standard.bool(forKey: "talk.subtitles") {
+    var subtitles: Bool = false {
         didSet {
             UserDefaults.standard.set(subtitles, forKey: "talk.subtitles")
             captureProblem = nil

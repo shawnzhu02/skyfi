@@ -193,6 +193,41 @@ final class LiveATCBrowser {
         Mixer.shared.browserFeedChanged(feed)
     }
 
+    struct StationGroup: Identifiable {
+        let title: String
+        let feeds: [ListedFeed]
+        var id: String { title }
+    }
+
+    /// What kind of station a feed is, for grouping: Tower, Ground and clearance, ATIS, Approach, Departure, Other.
+    nonisolated static func category(_ feed: ListedFeed) -> String {
+        let text = (feed.name + " " + feed.mount).lowercased()
+        if text.contains("atis") { return "ATIS" }
+        if text.contains("tower") || text.contains("twr") { return "Tower" }
+        if ["ground", "gnd", "delivery", "clearance", " del"].contains(where: text.contains) { return "Ground and clearance" }
+        if text.contains("app") { return "Approach" }
+        if text.contains("dep") { return "Departure" }
+        return "Other"
+    }
+
+    nonisolated static let categoryOrder = ["Tower", "Ground and clearance", "ATIS", "Approach", "Departure", "Other"]
+
+    /// Every station at the airport, grouped, in a steady order (tower #1, #2, #3 stay in LiveATC's order).
+    nonisolated static func grouped(_ feeds: [ListedFeed]) -> [StationGroup] {
+        categoryOrder.compactMap { title in
+            let items = feeds.filter { category($0) == title }
+            return items.isEmpty ? nil : StationGroup(title: title, feeds: items)
+        }
+    }
+
+    /// All stations for an airport: LiveATC's own list once Skyfi has read it, else Skyfi's built-in feeds.
+    func stations(for icao: String?) -> [StationGroup] {
+        guard let icao else { return [] }
+        let listed = listedFeeds(icao)
+        if !listed.isEmpty { return Self.grouped(listed) }
+        return Self.grouped(Catalog.feeds(at: icao.uppercased()).map { ListedFeed(mount: $0.mount, name: $0.name, up: nil) })
+    }
+
     /// Feeds for the menu: LiveATC's list for the airport, if Skyfi has read it.
     func listedFeeds(_ icao: String?) -> [ListedFeed] {
         icao.flatMap { listings[$0.uppercased()]?.feeds } ?? []
@@ -682,25 +717,11 @@ struct LiveATCPanel: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.cyan).lineLimit(1)
             }
             Spacer(minLength: 4)
+            stationsMenu
             // Everything else lives in one menu, so the header stays simple.
             Menu {
                 if browser.canGoBack {
                     Button { browser.goBack() } label: { Label("Back", systemImage: "chevron.backward") }
-                }
-                let icao = browser.feed?.airport ?? mixer.airport
-                let listed = browser.listedFeeds(icao)
-                if let icao, !listed.isEmpty {
-                    Section("Feeds at \(icao)") {
-                        ForEach(listed, id: \.mount) { item in
-                            Button {
-                                mixer.playBrowserFeed(LiveATCBrowser.atcFeed(item, icao: icao))
-                            } label: {
-                                Label(item.name + (item.up == false ? " (down)" : ""),
-                                      systemImage: browser.feed?.mount == item.mount ? "speaker.wave.2.fill"
-                                        : (item.up == false ? "moon.zzz" : "dot.radiowaves.left.and.right"))
-                            }
-                        }
-                    }
                 }
                 Button { browser.showAllFeeds() } label: { Label("LiveATC's page for this airport", systemImage: "list.bullet") }
                 Button { tall.toggle() } label: {
@@ -721,6 +742,36 @@ struct LiveATCPanel: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+
+    /// Every station at this airport (tower #1, #2, ground, ATIS, approach, departure) to switch between.
+    private var stationsMenu: some View {
+        let icao = browser.feed?.airport ?? mixer.airport
+        return Menu {
+            if let icao {
+                ForEach(browser.stations(for: icao)) { group in
+                    Section(group.title) {
+                        ForEach(group.feeds, id: \.mount) { item in
+                            Button {
+                                mixer.playBrowserFeed(LiveATCBrowser.atcFeed(item, icao: icao))
+                            } label: {
+                                Label(item.name + (item.up == false ? " (down)" : ""),
+                                      systemImage: browser.feed?.mount == item.mount ? "speaker.wave.2.fill"
+                                        : (item.up == false ? "moon.zzz" : "dot.radiowaves.left.and.right"))
+                            }
+                            .disabled(item.up == false)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Theme.cyan)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Stations")
     }
 
     /// Your starred and recent airports, one tap to switch the tower (and the map) there.

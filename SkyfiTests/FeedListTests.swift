@@ -125,3 +125,27 @@ final class YouTubePasteTests: XCTestCase {
         XCTAssertTrue(boarding.allSatisfy { YouTubeLink.videoID(from: $0.value) == $0.value })
     }
 }
+
+/// The station picker: every feed at an airport, grouped by kind.
+final class StationGroupTests: XCTestCase {
+    typealias Listed = LiveATCBrowser.ListedFeed
+
+    func testGroupsEveryStationInOrder() {
+        let feeds = [Listed(mount: "kjfk_app", name: "JFK Approach", up: true),
+                     Listed(mount: "kjfk_twr", name: "JFK Tower #1", up: true),
+                     Listed(mount: "kjfk_atis", name: "JFK ATIS", up: true),
+                     Listed(mount: "kjfk_twr2", name: "JFK Tower #2", up: nil),
+                     Listed(mount: "kjfk_gnd", name: "JFK Ground", up: true),
+                     Listed(mount: "kjfk_dep", name: "JFK Departure", up: false),
+                     Listed(mount: "kzny", name: "New York Center", up: true)]
+        let groups = LiveATCBrowser.grouped(feeds)
+        XCTAssertEqual(groups.map(\.title), ["Tower", "Ground and clearance", "ATIS", "Approach", "Departure", "Other"])
+        XCTAssertEqual(groups[0].feeds.map(\.mount), ["kjfk_twr", "kjfk_twr2"])
+        XCTAssertEqual(groups.flatMap(\.feeds).count, feeds.count)
+    }
+
+    func testEmptyGroupsAreLeftOut() {
+        let groups = LiveATCBrowser.grouped([Listed(mount: "a_twr", name: "Tower", up: true)])
+        XCTAssertEqual(groups.map(\.title), ["Tower"])
+    }
+}
