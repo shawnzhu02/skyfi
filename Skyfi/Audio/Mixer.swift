@@ -124,8 +124,10 @@ final class Mixer {
     // MARK: Music
 
     func playYouTube(_ input: String) async {
-        guard let id = YouTubeLink.videoID(from: input) else {
-            musicStatus = .failed("That doesn't look like a YouTube link.")
+        guard let id = YouTubeLink.videoID(inPasted: input) else {
+            let isList = input.contains("list=") && !input.contains("v=")
+            musicStatus = .failed(isList ? "That's a playlist link. Open a video in it and paste that video's link."
+                                         : "That doesn't look like a YouTube video link.")
             return
         }
         UserDefaults.standard.set("youtube:\(id)", forKey: "lastMusic")

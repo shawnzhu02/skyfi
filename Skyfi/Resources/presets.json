@@ -1,7 +1,86 @@
 [
-  {"id": "lofigirl", "title": "lofi hip hop radio", "subtitle": "Lofi Girl · live", "kind": "youtube", "value": "jfKfPfyJRdk"},
-  {"id": "synthwave", "title": "synthwave radio", "subtitle": "Lofi Girl · live", "kind": "youtube", "value": "4xDzrJKXOOY"},
-  {"id": "chillhop", "title": "lofi hip hop radio", "subtitle": "Chillhop Music · live", "kind": "youtube", "value": "7NOSDKb0HlU"},
-  {"id": "lautlofi", "title": "Lofi radio", "subtitle": "laut.fm · always on", "kind": "radio", "value": "https://stream.laut.fm/lofi"},
-  {"id": "ilovechillhop", "title": "I Love Chillhop", "subtitle": "ilovemusic.de · always on", "kind": "radio", "value": "https://streams.ilovemusic.de/iloveradio17.mp3"}
+  {
+    "id": "lofigirl",
+    "title": "lofi hip hop radio",
+    "subtitle": "Lofi Girl · live",
+    "kind": "youtube",
+    "value": "jfKfPfyJRdk"
+  },
+  {
+    "id": "synthwave",
+    "title": "synthwave radio",
+    "subtitle": "Lofi Girl · live",
+    "kind": "youtube",
+    "value": "4xDzrJKXOOY"
+  },
+  {
+    "id": "chillhop",
+    "title": "lofi hip hop radio",
+    "subtitle": "Chillhop Music · live",
+    "kind": "youtube",
+    "value": "7NOSDKb0HlU"
+  },
+  {
+    "id": "lautlofi",
+    "title": "Lofi radio",
+    "subtitle": "laut.fm · always on",
+    "kind": "radio",
+    "value": "https://stream.laut.fm/lofi"
+  },
+  {
+    "id": "ilovechillhop",
+    "title": "I Love Chillhop",
+    "subtitle": "ilovemusic.de · always on",
+    "kind": "radio",
+    "value": "https://streams.ilovemusic.de/iloveradio17.mp3"
+  },
+  {
+    "id": "board-delta",
+    "title": "Delta boarding music",
+    "subtitle": "Delta Air Lines · official 2015",
+    "kind": "youtube",
+    "value": "jXm2_HMwfN8"
+  },
+  {
+    "id": "board-delta-2025",
+    "title": "Delta boarding music, spring 2025",
+    "subtitle": "Delta Studio · extended",
+    "kind": "youtube",
+    "value": "f8GEHWcYW9A"
+  },
+  {
+    "id": "board-emirates",
+    "title": "Emirates boarding music",
+    "subtitle": "Emirates · official",
+    "kind": "youtube",
+    "value": "AgQWrB5b0ME"
+  },
+  {
+    "id": "board-emirates-1h",
+    "title": "Emirates boarding music, 1 hour",
+    "subtitle": "Emirates · loop",
+    "kind": "youtube",
+    "value": "zw-OGmgGrIo"
+  },
+  {
+    "id": "board-ba",
+    "title": "British Airways boarding music, 1 hour",
+    "subtitle": "British Airways · loop",
+    "kind": "youtube",
+    "value": "-1QFt-V0EWY"
+  },
+  {
+    "id": "board-ana",
+    "title": "ANA boarding song",
+    "subtitle": "All Nippon Airways",
+    "kind": "youtube",
+    "value": "CGkgiJQCDDM"
+  },
+  {
+    "id": "board-mix",
+    "title": "10 airlines' boarding music",
+    "subtitle": "Mixed airlines",
+    "kind": "youtube",
+    "value": "zIF094vTiHY"
+  }
 ]

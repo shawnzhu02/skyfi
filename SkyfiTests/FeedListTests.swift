@@ -93,3 +93,35 @@ final class SubtitleTests: XCTestCase {
         XCTAssertNil(SubtitleLine.parts(line(["say", "again"], 1..<5)))
     }
 }
+
+/// Whatever gets pasted into the music box.
+final class YouTubePasteTests: XCTestCase {
+    private let id = "dQw4w9WgXcQ"
+
+    func testCommonForms() {
+        for text in ["https://www.youtube.com/watch?v=\(id)", "youtube.com/watch?v=\(id)&list=PLx&t=30s",
+                     "https://youtu.be/\(id)?si=abc", "https://m.youtube.com/watch?v=\(id)",
+                     "https://music.youtube.com/watch?v=\(id)&si=x", "https://www.youtube.com/live/\(id)?feature=share",
+                     "https://www.youtube.com/shorts/\(id)", "https://www.youtube.com/embed/\(id)", id,
+                     "  https://youtu.be/\(id)  \n"] {
+            XCTAssertEqual(YouTubeLink.videoID(inPasted: text), id, text)
+        }
+    }
+
+    func testShareTextAroundALink() {
+        XCTAssertEqual(YouTubeLink.videoID(inPasted: "Check this out: https://youtu.be/\(id)?si=zz, so good"), id)
+        XCTAssertEqual(YouTubeLink.videoID(inPasted: "<https://www.youtube.com/watch?v=\(id)>"), id)
+    }
+
+    func testNotVideos() {
+        XCTAssertNil(YouTubeLink.videoID(inPasted: "https://www.youtube.com/playlist?list=PLabc"))
+        XCTAssertNil(YouTubeLink.videoID(inPasted: "https://example.com/watch?v=\(id)"))
+        XCTAssertNil(YouTubeLink.videoID(inPasted: "hello"))
+    }
+
+    func testBoardingPresetsExist() {
+        let boarding = Catalog.presets.filter { $0.id.hasPrefix("board-") }
+        XCTAssertGreaterThanOrEqual(boarding.count, 6)
+        XCTAssertTrue(boarding.allSatisfy { YouTubeLink.videoID(from: $0.value) == $0.value })
+    }
+}

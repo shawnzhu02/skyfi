@@ -128,21 +128,15 @@ struct MixerSheet: View {
                     }
                 }
 
+                Section("Airline boarding music") {
+                    ForEach(Catalog.presets.filter { $0.id.hasPrefix("board-") }) { preset in
+                        presetRow(preset)
+                    }
+                }
+
                 Section("24/7 lofi") {
-                    ForEach(Catalog.presets) { preset in
-                        Button {
-                            Task { await mixer.play(preset) }
-                        } label: {
-                            HStack {
-                                Image(systemName: preset.kind == .youtube ? "play.rectangle.fill" : "dot.radiowaves.left.and.right")
-                                    .foregroundStyle(Theme.amber)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(preset.title).foregroundStyle(Theme.text)
-                                    Text(preset.subtitle).font(.system(size: 11)).foregroundStyle(Theme.muted)
-                                }
-                            }
-                        }
+                    ForEach(Catalog.presets.filter { !$0.id.hasPrefix("board-") }) { preset in
+                        presetRow(preset)
                     }
                 }
 
@@ -169,6 +163,22 @@ struct MixerSheet: View {
                 ToolbarItem(placement: .topBarTrailing) { sleepMenu }
             }
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func presetRow(_ preset: Preset) -> some View {
+        Button {
+            Task { await mixer.play(preset) }
+        } label: {
+            HStack {
+                Image(systemName: preset.kind == .youtube ? "play.rectangle.fill" : "dot.radiowaves.left.and.right")
+                    .foregroundStyle(Theme.amber)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(preset.title).foregroundStyle(Theme.text)
+                    Text(preset.subtitle).font(.system(size: 11)).foregroundStyle(Theme.muted)
+                }
+            }
         }
     }
 

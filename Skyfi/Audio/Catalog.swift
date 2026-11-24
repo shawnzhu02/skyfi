@@ -159,8 +159,21 @@ enum YouTubeLink {
             .queryItems?.first(where: { $0.name == "v" })?.value, isID(v) {
             return v
         }
-        if parts.count >= 2, ["live", "shorts", "embed", "v"].contains(parts[0]), isID(parts[1]) {
+        if parts.count >= 2, ["live", "shorts", "embed", "v", "watch"].contains(parts[0]), isID(parts[1]) {
             return parts[1]
+        }
+        // A pasted share text ("Listen to this https://youtu.be/…") or a link with extras: take the
+        // first link-looking word.
+        return nil
+    }
+
+    /// The video in whatever was pasted: a bare ID, any youtube.com / youtu.be / music.youtube.com
+    /// link (with or without https, tracking parameters or playlist), or text around a link.
+    static func videoID(inPasted input: String) -> String? {
+        if let id = videoID(from: input) { return id }
+        for word in input.split(whereSeparator: { $0.isWhitespace }) {
+            let candidate = String(word).trimmingCharacters(in: CharacterSet(charactersIn: "<>()[]\"',.;"))
+            if candidate.lowercased().contains("youtu"), let id = videoID(from: candidate) { return id }
         }
         return nil
     }

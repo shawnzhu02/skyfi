@@ -111,8 +111,9 @@ struct RootView: View {
             .animation(.spring(duration: 0.3), value: browser.expanded)
 
             if browser.isOpen {
+                // Sits above the player bar, so the music slider stays reachable while the page is up.
                 LiveATCPanel { showMixer = true }
-                    .padding(.bottom, 4)
+                    .padding(.bottom, mixer.music != nil ? 112 : 66)
             }
         }
         .background(Theme.background)
